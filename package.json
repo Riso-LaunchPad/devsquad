@@ -1,0 +1,29 @@
+{
+  "name": "devsquad",
+  "version": "2.0.0",
+  "description": "CLI tool bridging Slack with Gemini Orchestrator sessions",
+  "main": "dist/cli.js",
+  "bin": {
+    "devsquad": "./bin/devsquad.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@slack/bolt": "^4.6.0",
+    "@slack/web-api": "^7.9.0",
+    "commander": "^12.1.0",
+    "express": "^5.2.1",
+    "prompts": "^2.4.2",
+    "winston": "^3.14.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.14.0",
+    "@types/prompts": "^2.4.9",
+    "typescript": "^5.5.0"
+  }
+}
