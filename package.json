@@ -1,6 +1,6 @@
 {
   "name": "devsquad",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "CLI tool bridging Slack with Gemini Orchestrator sessions",
   "main": "dist/cli.js",
   "bin": {
@@ -9,6 +9,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "license": "MIT",
@@ -24,6 +26,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^20.14.0",
     "@types/prompts": "^2.4.9",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.0.18"
   }
 }
