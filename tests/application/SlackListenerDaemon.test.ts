@@ -92,6 +92,26 @@ describe('SlackListenerDaemon', () => {
     expect(await redis.len('queue:project-alpha')).toBe(0);
   });
 
+  it('routes hardcoded status channel C0AK5K4QGNA to queue:general', async () => {
+    await daemon.start();
+
+    await socket.simulateMessage(makeMessage('C0AK5K4QGNA', 'test from general'));
+
+    const item = await redis.pop('queue:general');
+    expect(item).not.toBeNull();
+    const parsed = JSON.parse(item!);
+    expect(parsed.text).toBe('test from general');
+  });
+
+  it('status channel routing does not require a binding', async () => {
+    // no bindings at all
+    await daemon.start();
+
+    await socket.simulateMessage(makeMessage('C0AK5K4QGNA', 'no binding needed'));
+
+    expect(await redis.len('queue:general')).toBe(1);
+  });
+
   it('getBindings returns all bindings', () => {
     daemon.bind('C123', 'project-alpha');
     daemon.bind('C456', 'project-beta');

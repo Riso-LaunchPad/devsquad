@@ -140,7 +140,7 @@ describe('ProjectStatusService', () => {
       expect(client.updated[0].text).toContain('_Fix auth bug #123_');
     });
 
-    it('Offline shows only title line', async () => {
+    it('Offline shows title and processor status', async () => {
       const { svc, client } = makeService();
       await svc.post(PROJECT);
       client.posted = [];
@@ -149,8 +149,9 @@ describe('ProjectStatusService', () => {
 
       const text = client.updated[0].text;
       expect(text).toContain('Orchestrator Offline');
+      expect(text).toContain('Processor:');
       expect(text).not.toContain('agent-claude-lead');
-      expect(text.trim().split('\n')).toHaveLength(1);
+      expect(text.trim().split('\n')).toHaveLength(2);
     });
 
     it('Crashed shows title and error subtitle', async () => {
@@ -231,6 +232,54 @@ describe('ProjectStatusService', () => {
     it('does nothing if no state exists', async () => {
       const { svc, client } = makeService();
       await svc.updateAgent(PROJECT, 'agent-claude-lead', 'Working');
+
+      expect(client.updated).toHaveLength(0);
+    });
+  });
+
+  describe('updateProcessorStatus', () => {
+    it('shows processor running by default after post', async () => {
+      const { svc, client } = makeService();
+      await svc.post(PROJECT);
+
+      const text = client.posted[0].text;
+      expect(text).toContain('● Processor: running');
+    });
+
+    it('updates message to stopped when processor stops', async () => {
+      const { svc, client } = makeService();
+      await svc.post(PROJECT);
+      client.posted = [];
+
+      await svc.updateProcessorStatus(PROJECT, 'stopped');
+
+      expect(client.updated[0].text).toContain('○ Processor: stopped');
+    });
+
+    it('updates message back to running when processor resumes', async () => {
+      const { svc, client } = makeService();
+      await svc.post(PROJECT);
+      await svc.updateProcessorStatus(PROJECT, 'stopped');
+      client.updated = [];
+
+      await svc.updateProcessorStatus(PROJECT, 'running');
+
+      expect(client.updated[0].text).toContain('● Processor: running');
+    });
+
+    it('persists processorStatus in state', async () => {
+      const { svc } = makeService();
+      await svc.post(PROJECT);
+
+      await svc.updateProcessorStatus(PROJECT, 'stopped');
+
+      const state = await svc.loadState('test-project');
+      expect(state?.processorStatus).toBe('stopped');
+    });
+
+    it('does nothing if no state exists', async () => {
+      const { svc, client } = makeService();
+      await svc.updateProcessorStatus(PROJECT, 'stopped');
 
       expect(client.updated).toHaveLength(0);
     });
