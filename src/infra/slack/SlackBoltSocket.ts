@@ -24,6 +24,7 @@ export class SlackBoltSocket implements ISlackSocket {
 
     this.app.message(/.*/, async (args: SlackEventMiddlewareArgs<'message'>) => {
       const msg: any = args.message;
+      console.log('[SlackBoltSocket] raw event:', JSON.stringify({ type: msg?.type, bot_id: msg?.bot_id, app_id: msg?.app_id, channel: msg?.channel, user: msg?.user }));
       if (!msg || msg.type !== 'message' || msg.bot_id || msg.app_id) return;
 
       const incoming: IncomingSlackMessage = {
@@ -39,6 +40,7 @@ export class SlackBoltSocket implements ISlackSocket {
 
     await this.app.start();
     this.connected = true;
+    console.log('[SlackBoltSocket] connected via Socket Mode');
     this.startHealthPing();
   }
 
@@ -62,18 +64,21 @@ export class SlackBoltSocket implements ISlackSocket {
     this.healthInterval = setInterval(async () => {
       try {
         const result = await (this.app!.client as any).api.test();
-        if (!result.ok) this.connected = false;
+        if (!result.ok) throw new Error('api.test returned not ok');
       } catch {
         this.connected = false;
+        console.error('[SlackBoltSocket] health check failed, attempting reconnect...');
         try {
           await this.app!.stop();
           await this.app!.start();
           this.connected = true;
-        } catch {
-          // will retry next interval
+          console.log('[SlackBoltSocket] reconnected');
+        } catch (err) {
+          console.error('[SlackBoltSocket] reconnect failed, exiting for LaunchAgent restart:', err);
+          process.exit(1);
         }
       }
-    }, 900_000); // 15 min
+    }, 60_000); // 1 min
 
     this.healthInterval.unref?.();
   }
