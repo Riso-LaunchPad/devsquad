@@ -36,17 +36,21 @@ export class MessageProcessorDaemon {
 
   private async loop(): Promise<void> {
     const key = `queue:${this.config.project}`;
+    console.log(`[MessageProcessorDaemon:${this.config.project}] listening on key=${key}`);
 
     while (this.running) {
       try {
         const raw = await this.redis.bpop(key, 5); // 5s timeout to allow clean stop
         if (!raw) continue;
 
+        console.log(`[MessageProcessorDaemon:${this.config.project}] received:`, raw);
         const msg = JSON.parse(raw) as IncomingSlackMessage;
         const formatted = this.format(msg);
+        console.log(`[MessageProcessorDaemon:${this.config.project}] sending to tmux:`, formatted);
         await this.tmux.sendMessage(this.config.target, formatted);
-      } catch {
-        // continue loop on error
+        console.log(`[MessageProcessorDaemon:${this.config.project}] sent ok`);
+      } catch (err) {
+        console.error(`[MessageProcessorDaemon:${this.config.project}] error:`, err);
       }
     }
   }
