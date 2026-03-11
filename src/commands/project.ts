@@ -272,6 +272,36 @@ export function projectCommand(program: Command): void {
   // ── list ─────────────────────────────────────────────────────────────────────
 
   project
+    .command('config')
+    .description('Show config and state for a project (reads ~/.devsquad files)')
+    .option('--name <name>', 'Project name (default: current directory name)')
+    .action(async (opts) => {
+      const { getProjectsPath, getProjectStatusPath } = await import('../utils/paths');
+      const { readFile } = await import('fs/promises');
+
+      const name: string = opts.name ?? require('path').basename(process.cwd());
+      const projectsRaw = await readFile(getProjectsPath(), 'utf-8').catch(() => '[]');
+      const projects: Array<Record<string, unknown>> = JSON.parse(projectsRaw);
+      const p = projects.find(x => x['name'] === name);
+      if (!p) {
+        console.error(`Project "${name}" not found in projects.json`);
+        process.exit(1);
+      }
+
+      console.log('\n── Project config (' + getProjectsPath() + ') ──');
+      console.log(JSON.stringify(p, null, 2));
+
+      const statePath = getProjectStatusPath(name);
+      const stateRaw = await readFile(statePath, 'utf-8').catch(() => null);
+      if (stateRaw) {
+        console.log('\n── Project state (' + statePath + ') ──');
+        console.log(JSON.stringify(JSON.parse(stateRaw), null, 2));
+      } else {
+        console.log('\n── Project state ──\n(no state file found)');
+      }
+    });
+
+  project
     .command('list')
     .description('List all registered projects')
     .action(async () => {
