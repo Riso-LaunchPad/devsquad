@@ -10,10 +10,12 @@ export class MockRedisService implements IRedisService {
     this.queues.set(key, q);
   }
 
-  async bpop(key: string, _timeoutSeconds?: number): Promise<string | null> {
+  async bpop(key: string, _timeoutSeconds = 0): Promise<string | null> {
     const q = this.queues.get(key);
-    if (!q || q.length === 0) return null;
-    return q.shift() ?? null;
+    if (q && q.length > 0) return q.shift() ?? null;
+    // simulate a short block so the loop doesn't spin; exit immediately if quit
+    await new Promise(r => setTimeout(r, this.quit_called ? 0 : 10));
+    return null;
   }
 
   async pop(key: string): Promise<string | null> {
