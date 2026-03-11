@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { ensureConfig } from './utils/config';
 import { configCommand } from './commands/config';
 import { daemonCommand } from './commands/daemon';
+import { runListenerCommand } from './commands/run-listener';
 
 const program = new Command();
 
@@ -22,6 +23,11 @@ async function main(): Promise<void> {
     .action(configCommand);
 
   daemonCommand(program);
+
+  program
+    .command('_run-listener')
+    .description('Internal: run the Slack listener process (used by LaunchAgent)')
+    .action(runListenerCommand);
 
   await program.parseAsync(process.argv);
 }

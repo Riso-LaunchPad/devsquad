@@ -6,6 +6,9 @@ export interface DevsquadConfig {
   logLevel: string;
   slack_app_token?: string;
   slack_bot_token?: string;
+  redis_host?: string;
+  redis_port?: number;
+  redis_password?: string;
 }
 
 const DEFAULT_CONFIG: DevsquadConfig = {
