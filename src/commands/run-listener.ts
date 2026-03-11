@@ -28,6 +28,9 @@ export async function runListenerCommand(): Promise<void> {
   const statusSvc = new DaemonStatusService(slack, statusChannel);
   const daemon = new SlackListenerDaemon(slack, redis);
 
+  // TEST BINDING — remove after testing
+  daemon.bind('C0AK5K4QGNA', 'test-project');
+
   // Graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...');
