@@ -104,6 +104,20 @@ export function projectCommand(program: Command): void {
         await mgr.load(label);
         console.log('✓');
 
+        // 7. Update daemon status message with new project list
+        process.stdout.write('  Updating daemon status... ');
+        try {
+          const allProjects = await svc.loadAll();
+          const config = await loadConfig();
+          const daemonClient = new SlackBoltClient(config.slack_bot_token!);
+          const daemonSlack = new SlackService(daemonClient, null as never);
+          const daemonSvc = new DaemonStatusService(daemonSlack, config.slack_status_channel ?? 'general');
+          await daemonSvc.update(allProjects.map(p => p.name));
+          console.log('✓');
+        } catch {
+          console.log('(skipped)');
+        }
+
         console.log('');
         console.log(`✅ Project "${name}" initialized`);
         console.log(`   Slack   : #${channel.name} (${channel.id})`);
