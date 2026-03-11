@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { ensureConfig } from './utils/config';
 import { configCommand } from './commands/config';
+import { daemonCommand } from './commands/daemon';
 
 const program = new Command();
 
@@ -19,6 +20,8 @@ async function main(): Promise<void> {
     .option('--app-token <token>', 'Set Slack App Token (xoxa-...)')
     .option('--view', 'View current configuration')
     .action(configCommand);
+
+  daemonCommand(program);
 
   await program.parseAsync(process.argv);
 }

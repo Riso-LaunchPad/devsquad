@@ -24,3 +24,11 @@ export function getLogsDir(): string {
 export function getLogPath(label: string): string {
   return path.join(getLogsDir(), `${label}.log`);
 }
+
+export function getDaemonStatePath(): string {
+  return path.join(getDevsquadHome(), 'daemon-state.json');
+}
+
+export function getDaemonShutdownFlagPath(): string {
+  return path.join(getDevsquadHome(), 'daemon.shutdown');
+}
