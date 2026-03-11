@@ -25,6 +25,7 @@ export interface ProjectStatusState {
   task: string;                          // current task, "—" if idle
   error?: string;                        // set when phase is Crashed
   agentStatuses: Record<string, string>; // agentName → status label
+  processorStatus: 'running' | 'stopped';
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ export class ProjectStatusService {
       phase: 'Listening',
       task: '—',
       agentStatuses: initialAgentStatuses,
+      processorStatus: 'running',
     };
 
     const result = await this.slack.send(project.channelId, buildMessage(state));
@@ -76,6 +78,15 @@ export class ProjectStatusService {
 
     state.agentStatuses[agentName] = status;
 
+    await this.slack.edit(state.channelId, state.messageTs, buildMessage(state));
+    await this.saveState(project.name, state);
+  }
+
+  async updateProcessorStatus(project: ProjectConfig, status: 'running' | 'stopped'): Promise<void> {
+    const state = await this.loadState(project.name);
+    if (!state) return;
+
+    state.processorStatus = status;
     await this.slack.edit(state.channelId, state.messageTs, buildMessage(state));
     await this.saveState(project.name, state);
   }
@@ -113,16 +124,21 @@ function pad(s: string, len: number): string {
 }
 
 function buildMessage(state: ProjectStatusState): string {
-  // ── Offline: title only ────────────────────────────────────────────────────
+  const processorLine = state.processorStatus === 'running'
+    ? '_● Processor: running_'
+    : '_○ Processor: stopped_';
+
+  // ── Offline: title + processor status ─────────────────────────────────────
   if (state.phase === 'Offline') {
-    return '*🔴 Orchestrator Offline*';
+    return ['*🔴 Orchestrator Offline*', processorLine].join('\n');
   }
 
-  // ── Crashed: title + error subtitle ───────────────────────────────────────
+  // ── Crashed: title + error + processor status ──────────────────────────────
   if (state.phase === 'Crashed') {
     return [
       '*⚠️ Orchestrator Crashed*',
       state.error ? `_${state.error}_` : '_Unexpected error — check daemon logs_',
+      processorLine,
     ].join('\n');
   }
 
@@ -136,6 +152,7 @@ function buildMessage(state: ProjectStatusState): string {
 
   return [
     '*🟢 Orchestrator Online*',
+    processorLine,
     '',
     `*${phaseEmoji(state.phase)} ${state.phase}*`,
     `_${state.task}_`,

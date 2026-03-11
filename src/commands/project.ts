@@ -6,10 +6,13 @@ import { SlackService } from '../application/slack/SlackService';
 import { SlackBoltClient } from '../infra/slack/SlackBoltClient';
 import { ProjectService } from '../application/project/ProjectService';
 import { ProjectStatusService } from '../application/project/ProjectStatusService';
+import { LaunchDaemonManager } from '../infra/launchdaemon';
+import { processorLabel } from './daemon';
 import { loadConfig } from '../utils/config';
 
 const exec = promisify(execCb);
 const svc = new ProjectService();
+const mgr = new LaunchDaemonManager();
 
 export function projectCommand(program: Command): void {
   const project = program
@@ -83,14 +86,30 @@ export function projectCommand(program: Command): void {
         await svc.update(name, { statusMessageTs: statusTs });
         console.log('✓');
 
+        // 6. Install + start processor LaunchAgent
+        process.stdout.write('  Starting processor daemon... ');
+        const node = (await exec('which node')).stdout.trim();
+        const bin = (await exec('which devsquad')).stdout.trim();
+        const label = processorLabel(name);
+        await mgr.install({
+          label,
+          program: node,
+          args: [bin, '_run-processor', name],
+          envVars: {
+            PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+          },
+          keepAlive: true,
+        });
+        await mgr.load(label);
+        console.log('✓');
+
         console.log('');
         console.log(`✅ Project "${name}" initialized`);
         console.log(`   Slack   : #${channel.name} (${channel.id})`);
         if (userIds.length > 0) console.log(`   Members : ${userIds.join(', ')}`);
         console.log(`   Tmux    : ${session}:${window}`);
         console.log(`   Queue   : queue:${name}`);
-        console.log('');
-        console.log('Next: devsquad daemon restart');
+        console.log(`   Daemon  : ${label}`);
       } catch (err: unknown) {
         console.error('\nError:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -165,12 +184,13 @@ export function projectCommand(program: Command): void {
   project
     .command('stop')
     .description('Kill the tmux session and mark project as Offline in Slack')
-    .requiredOption('--name <name>', 'Project name')
+    .option('--name <name>', 'Project name (default: current directory name)')
     .action(async (opts) => {
       try {
-        const projectConfig = await svc.get(opts.name);
+        const name: string = opts.name ?? require('path').basename(process.cwd());
+        const projectConfig = await svc.get(name);
         if (!projectConfig) {
-          console.error(`Project "${opts.name}" not found`);
+          console.error(`Project "${name}" not found`);
           process.exit(1);
         }
 
@@ -192,7 +212,60 @@ export function projectCommand(program: Command): void {
         await statusSvc.updateSession(projectConfig, { phase: 'Offline', task: '—' });
         console.log('✓');
 
-        console.log(`\n✓ Project "${opts.name}" stopped`);
+        // Unload processor daemon (keep plist so it can be restarted)
+        process.stdout.write('  Stopping processor daemon... ');
+        try {
+          await mgr.unload(processorLabel(name));
+          console.log('✓');
+        } catch {
+          console.log('(skipped)');
+        }
+
+        console.log(`\n✓ Project "${name}" stopped`);
+      } catch (err: unknown) {
+        console.error('Error:', err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
+    });
+
+  // ── resume ──────────────────────────────────────────────────────────────────
+
+  project
+    .command('resume')
+    .description('Resume a stopped project: restart tmux session + processor daemon')
+    .option('--name <name>', 'Project name (default: current directory name)')
+    .option('--window <window>', 'tmux window name (default: project\'s configured window)')
+    .action(async (opts) => {
+      try {
+        const name: string = opts.name ?? require('path').basename(process.cwd());
+        const projectConfig = await svc.get(name);
+        if (!projectConfig) {
+          console.error(`Project "${name}" not found`);
+          process.exit(1);
+        }
+
+        const window = opts.window ?? projectConfig.tmuxWindow;
+
+        // Restart tmux session
+        process.stdout.write(`  Starting tmux "${projectConfig.tmuxSession}:${window}"... `);
+        await startTmuxSession(projectConfig.tmuxSession, window);
+        console.log('✓');
+
+        // Reload processor daemon
+        process.stdout.write('  Starting processor daemon... ');
+        await mgr.load(processorLabel(name));
+        console.log('✓');
+
+        // Update Slack status
+        process.stdout.write('  Updating Slack status... ');
+        const config = await loadConfig();
+        const client = new SlackBoltClient(config.slack_bot_token!);
+        const slack = new SlackService(client, null as never);
+        const statusSvc = new ProjectStatusService(slack);
+        await statusSvc.updateSession(projectConfig, { phase: 'Listening', task: '—' });
+        console.log('✓');
+
+        console.log(`\n✓ Project "${name}" resumed`);
       } catch (err: unknown) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -255,6 +328,15 @@ export function projectCommand(program: Command): void {
           const statusSvc = new ProjectStatusService(slack);
           await statusSvc.removeState(opts.name);
           await slack.archiveChannel(projectConfig.channelId);
+          console.log('✓');
+        } catch {
+          console.log('(skipped)');
+        }
+
+        // Unload + remove processor daemon
+        process.stdout.write('  Removing processor daemon... ');
+        try {
+          await mgr.remove(processorLabel(opts.name));
           console.log('✓');
         } catch {
           console.log('(skipped)');

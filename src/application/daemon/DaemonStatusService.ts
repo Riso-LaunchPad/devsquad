@@ -23,18 +23,19 @@ export class DaemonStatusService {
    * - Posts/replies to Slack status thread
    * - Clears shutdown flag
    */
-  async onStart(): Promise<void> {
+  async onStart(projects: string[] = []): Promise<void> {
     await fs.mkdir(getDevsquadHome(), { recursive: true });
 
     const state = await this.loadState();
     const crashed = !(await this.hasShutdownFlag());
     const now = new Date().toLocaleString();
+    const subtitle = buildSubtitle(projects);
 
     if (!state) {
       // First start — create the status thread
       const result = await this.slack.send(
         this.statusChannel,
-        `🟢 *DevSquad Daemon started* — ${now}`,
+        `🟢 *DevSquad Daemon started* — ${now}\n${subtitle}`,
       );
       await this.saveState({
         channelId: this.statusChannel,
@@ -44,13 +45,13 @@ export class DaemonStatusService {
       await this.slack.edit(
         state.channelId,
         state.threadTs,
-        `⚠️ *Daemon recovered from crash* — restarted at ${now}`,
+        `⚠️ *Daemon recovered from crash* — restarted at ${now}\n${subtitle}`,
       );
     } else {
       await this.slack.edit(
         state.channelId,
         state.threadTs,
-        `🟢 *Daemon restarted* — ${now}`,
+        `🟢 *Daemon restarted* — ${now}\n${subtitle}`,
       );
     }
 
@@ -62,12 +63,13 @@ export class DaemonStatusService {
    * Called at daemon clean shutdown.
    * Posts stop notice and writes shutdown flag.
    */
-  async onStop(): Promise<void> {
+  async onStop(projects: string[] = []): Promise<void> {
     const state = await this.loadState();
     const now = new Date().toLocaleString();
 
     if (state) {
-      await this.slack.edit(state.channelId, state.threadTs, `🔴 *Daemon stopped* — ${now}`);
+      const subtitle = buildSubtitle(projects);
+      await this.slack.edit(state.channelId, state.threadTs, `🔴 *Daemon stopped* — ${now}\n${subtitle}`);
     }
 
     await this.writeShutdownFlag();
@@ -106,4 +108,13 @@ export class DaemonStatusService {
       // flag didn't exist — first start
     }
   }
+}
+
+function buildSubtitle(projects: string[]): string {
+  const listenerStatus = '● Listener: running';
+  if (projects.length === 0) {
+    return `_${listenerStatus} | Processors: none_`;
+  }
+  const processorList = projects.map(p => `● ${p}`).join(', ');
+  return `_${listenerStatus} | Processors: ${processorList}_`;
 }

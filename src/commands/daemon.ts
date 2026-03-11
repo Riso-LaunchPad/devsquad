@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { LaunchDaemonManager } from '../infra/launchdaemon';
+import { ProjectService } from '../application/project/ProjectService';
 import { getLogPath } from '../utils/paths';
 import { createReadStream } from 'fs';
 import { exec as execCb } from 'child_process';
@@ -8,6 +9,10 @@ import { promisify } from 'util';
 const exec = promisify(execCb);
 
 const LISTENER_LABEL = 'com.devsquad.listener';
+
+export function processorLabel(projectName: string): string {
+  return `com.devsquad.processor.${projectName}`;
+}
 
 const mgr = new LaunchDaemonManager();
 
@@ -45,7 +50,7 @@ export function daemonCommand(program: Command): void {
         });
 
         await mgr.load(LISTENER_LABEL);
-        console.log(`✓ Daemon started (${LISTENER_LABEL})`);
+        console.log(`✓ Listener started (${LISTENER_LABEL})`);
       } catch (err) {
         console.error('Failed to start daemon:', err);
         process.exit(1);
@@ -58,7 +63,7 @@ export function daemonCommand(program: Command): void {
     .action(async () => {
       try {
         await mgr.unload(LISTENER_LABEL);
-        console.log(`✓ Daemon stopped`);
+        console.log(`✓ Listener stopped`);
       } catch (err) {
         console.error('Failed to stop daemon:', err);
         process.exit(1);
@@ -71,7 +76,7 @@ export function daemonCommand(program: Command): void {
     .action(async () => {
       try {
         await mgr.restart(LISTENER_LABEL);
-        console.log(`✓ Daemon restarted`);
+        console.log(`✓ Listener restarted`);
       } catch (err) {
         console.error('Failed to restart daemon:', err);
         process.exit(1);
@@ -80,11 +85,11 @@ export function daemonCommand(program: Command): void {
 
   daemon
     .command('remove')
-    .description('Stop and remove the daemon plist')
+    .description('Stop and remove the listener daemon plist')
     .action(async () => {
       try {
         await mgr.remove(LISTENER_LABEL);
-        console.log(`✓ Daemon removed`);
+        console.log(`✓ Listener removed`);
       } catch (err) {
         console.error('Failed to remove daemon:', err);
         process.exit(1);
@@ -93,22 +98,37 @@ export function daemonCommand(program: Command): void {
 
   daemon
     .command('status')
-    .description('Show daemon status')
+    .description('Show status of listener + all project processors')
     .action(async () => {
-      const s = await mgr.status(LISTENER_LABEL);
-      if (s.loaded) {
-        const pid = s.pid ? `PID ${s.pid}` : 'not running';
+      const listenerStatus = await mgr.status(LISTENER_LABEL);
+      if (listenerStatus.loaded) {
+        const pid = listenerStatus.pid ? `PID ${listenerStatus.pid}` : 'not running';
         console.log(`● ${LISTENER_LABEL} — loaded (${pid})`);
       } else {
         console.log(`○ ${LISTENER_LABEL} — not loaded`);
+      }
+
+      const svc = new ProjectService();
+      const projects = await svc.loadAll();
+      for (const p of projects) {
+        const label = processorLabel(p.name);
+        const s = await mgr.status(label);
+        if (s.loaded) {
+          const pid = s.pid ? `PID ${s.pid}` : 'not running';
+          console.log(`● ${label} — loaded (${pid})`);
+        } else {
+          console.log(`○ ${label} — not loaded`);
+        }
       }
     });
 
   daemon
     .command('logs')
-    .description('Tail the daemon log file')
-    .action(() => {
-      const logPath = getLogPath(LISTENER_LABEL);
+    .description('Tail the listener log (or processor log with --project <name>)')
+    .option('--project <name>', 'Show logs for a specific project processor')
+    .action((opts) => {
+      const label = opts.project ? processorLabel(opts.project) : LISTENER_LABEL;
+      const logPath = getLogPath(label);
       console.log(`Tailing ${logPath}\n`);
       const stream = createReadStream(logPath, { encoding: 'utf-8' });
       stream.on('error', () => console.error('No log file found. Has the daemon been started?'));
