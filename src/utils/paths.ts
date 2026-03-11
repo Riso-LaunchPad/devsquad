@@ -36,3 +36,11 @@ export function getDaemonShutdownFlagPath(): string {
 export function getTeamStatePath(): string {
   return path.join(getDevsquadHome(), 'team-state.json');
 }
+
+export function getProjectsPath(): string {
+  return path.join(getDevsquadHome(), 'projects.json');
+}
+
+export function getProjectStatusPath(name: string): string {
+  return path.join(getDevsquadHome(), `project-${name}.state.json`);
+}

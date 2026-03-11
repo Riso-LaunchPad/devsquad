@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { ensureConfig } from './utils/config';
 import { configCommand } from './commands/config';
 import { daemonCommand } from './commands/daemon';
+import { projectCommand } from './commands/project';
 import { runListenerCommand } from './commands/run-listener';
 
 const program = new Command();
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
     .action(configCommand);
 
   daemonCommand(program);
+  projectCommand(program);
 
   program
     .command('_run-listener')
