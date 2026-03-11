@@ -134,6 +134,53 @@ describe('DaemonStatusService', () => {
     });
   });
 
+  describe('update', () => {
+    it('edits existing message with new project list', async () => {
+      const { svc, client } = makeService();
+      await svc.onStart(['project-alpha']);
+      client.posted = [];
+      client.updated = [];
+
+      await svc.update(['project-alpha', 'project-beta']);
+
+      expect(client.updated).toHaveLength(1);
+      expect(client.updated[0].text).toContain('project-alpha');
+      expect(client.updated[0].text).toContain('project-beta');
+    });
+
+    it('does nothing if no daemon state exists', async () => {
+      const { svc, client } = makeService();
+
+      await svc.update(['project-alpha']);
+
+      expect(client.updated).toHaveLength(0);
+    });
+
+    it('shows "none" subtitle when project list is empty', async () => {
+      const { svc, client } = makeService();
+      await svc.onStart(['project-alpha']);
+      client.posted = [];
+      client.updated = [];
+
+      await svc.update([]);
+
+      expect(client.updated).toHaveLength(1);
+      expect(client.updated[0].text).toContain('none');
+    });
+
+    it('edits the correct thread (uses saved threadTs)', async () => {
+      const { svc, client } = makeService();
+      await svc.onStart();
+      const threadTs = client.posted[0].ts ?? 'ts_1';
+      client.posted = [];
+      client.updated = [];
+
+      await svc.update(['some-project']);
+
+      expect(client.updated[0].ts).toBe(threadTs);
+    });
+  });
+
   describe('onStop', () => {
     it('replies to thread with stopped message', async () => {
       const { svc, client } = makeService();

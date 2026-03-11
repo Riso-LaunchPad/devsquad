@@ -8,6 +8,7 @@ import { ProjectService } from '../application/project/ProjectService';
 import { ProjectStatusService } from '../application/project/ProjectStatusService';
 import { LaunchDaemonManager } from '../infra/launchdaemon';
 import { processorLabel } from './daemon';
+import { DaemonStatusService } from '../application/daemon/DaemonStatusService';
 import { loadConfig } from '../utils/config';
 
 const exec = promisify(execCb);
@@ -344,6 +345,21 @@ export function projectCommand(program: Command): void {
 
         // Remove from registry
         await svc.remove(opts.name);
+
+        // Update daemon status message with remaining projects
+        process.stdout.write('  Updating daemon status... ');
+        try {
+          const remaining = await svc.loadAll();
+          const config = await loadConfig();
+          const daemonClient = new SlackBoltClient(config.slack_bot_token!);
+          const daemonSlack = new SlackService(daemonClient, null as never);
+          const daemonSvc = new DaemonStatusService(daemonSlack, config.slack_status_channel ?? 'general');
+          await daemonSvc.update(remaining.map(p => p.name));
+          console.log('✓');
+        } catch {
+          console.log('(skipped)');
+        }
+
         console.log(`\n✓ Project "${opts.name}" removed`);
       } catch (err: unknown) {
         console.error('Error:', err instanceof Error ? err.message : err);

@@ -60,6 +60,19 @@ export class DaemonStatusService {
   }
 
   /**
+   * Update the daemon status message in-place with a new project list.
+   * Call this after adding or removing a project.
+   */
+  async update(projects: string[]): Promise<void> {
+    const state = await this.loadState();
+    if (!state) return;
+
+    const subtitle = buildSubtitle(projects);
+    const now = new Date().toLocaleString();
+    await this.slack.edit(state.channelId, state.threadTs, `🟢 *Daemon running* — updated ${now}\n${subtitle}`);
+  }
+
+  /**
    * Called at daemon clean shutdown.
    * Posts stop notice and writes shutdown flag.
    */
