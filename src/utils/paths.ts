@@ -8,3 +8,19 @@ export function getDevsquadHome(): string {
 export function getConfigPath(): string {
   return path.join(getDevsquadHome(), 'config.json');
 }
+
+export function getLaunchAgentsDir(): string {
+  return path.join(os.homedir(), 'Library', 'LaunchAgents');
+}
+
+export function getPlistPath(label: string): string {
+  return path.join(getLaunchAgentsDir(), `${label}.plist`);
+}
+
+export function getLogsDir(): string {
+  return path.join(getDevsquadHome(), 'logs');
+}
+
+export function getLogPath(label: string): string {
+  return path.join(getLogsDir(), `${label}.log`);
+}
