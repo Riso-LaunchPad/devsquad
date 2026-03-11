@@ -59,6 +59,7 @@ describe('MessageProcessorDaemon', () => {
     expect(tmux.sent[0].message).toContain('hello world');
     expect(tmux.sent[0].message).toContain('@U456');
     expect(tmux.sent[0].message).toContain('#C123');
+    expect(tmux.sent[0].message).toContain('ts:1234567890.000001');
   });
 
   it('formats message with thread info', async () => {

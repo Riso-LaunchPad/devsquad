@@ -57,6 +57,6 @@ export class MessageProcessorDaemon {
 
   private format(msg: IncomingSlackMessage): string {
     const thread = msg.threadTs ? ` [thread:${msg.threadTs}]` : '';
-    return `[Slack #${msg.channel} | @${msg.user}]${thread}: ${msg.text}`;
+    return `[Slack #${msg.channel} | @${msg.user} | ts:${msg.ts}]${thread}: ${msg.text}`;
   }
 }
