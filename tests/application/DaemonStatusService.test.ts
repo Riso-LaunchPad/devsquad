@@ -40,11 +40,11 @@ vi.mock('fs/promises', () => mockFs);
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function makeService() {
+function makeService(channel = 'C0AK5K4QGNA') {
   const client = new MockSlackClient();
   const socket = new MockSlackSocket();
   const slack = new SlackService(client, socket);
-  const svc = new DaemonStatusService(slack);
+  const svc = new DaemonStatusService(slack, channel);
   return { svc, client };
 }
 
@@ -62,7 +62,7 @@ describe('DaemonStatusService', () => {
       await svc.onStart();
 
       expect(client.posted).toHaveLength(1);
-      expect(client.posted[0].channel).toBe('general');
+      expect(client.posted[0].channel).toBe('C0AK5K4QGNA');
       expect(client.posted[0].text).toContain('started');
       expect(client.posted[0].threadTs).toBeUndefined();
     });
@@ -76,7 +76,7 @@ describe('DaemonStatusService', () => {
       );
       expect(stateFile).toBeDefined();
       const state = JSON.parse(stateFile![1]);
-      expect(state.channelId).toBe('general');
+      expect(state.channelId).toBe('C0AK5K4QGNA');
       expect(state.threadTs).toBeDefined();
     });
 
@@ -105,9 +105,9 @@ describe('DaemonStatusService', () => {
       // Second start
       await svc.onStart();
 
-      expect(client.posted).toHaveLength(1);
-      expect(client.posted[0].text).toContain('crash');
-      expect(client.posted[0].threadTs).toBe(threadTs);
+      expect(client.updated).toHaveLength(1);
+      expect(client.updated[0].text).toContain('crash');
+      expect(client.updated[0].ts).toBe(threadTs);
     });
   });
 
@@ -123,13 +123,14 @@ describe('DaemonStatusService', () => {
       // Clean stop writes shutdown flag
       await svc.onStop();
       client.posted = [];
+      client.updated = [];
 
       // Restart
       await svc.onStart();
 
-      expect(client.posted).toHaveLength(1);
-      expect(client.posted[0].text).toContain('restarted');
-      expect(client.posted[0].threadTs).toBe(threadTs);
+      expect(client.updated).toHaveLength(1);
+      expect(client.updated[0].text).toContain('restarted');
+      expect(client.updated[0].ts).toBe(threadTs);
     });
   });
 
@@ -142,9 +143,9 @@ describe('DaemonStatusService', () => {
 
       await svc.onStop();
 
-      expect(client.posted).toHaveLength(1);
-      expect(client.posted[0].text).toContain('stopped');
-      expect(client.posted[0].threadTs).toBe(threadTs);
+      expect(client.updated).toHaveLength(1);
+      expect(client.updated[0].text).toContain('stopped');
+      expect(client.updated[0].ts).toBe(threadTs);
     });
 
     it('writes shutdown flag', async () => {

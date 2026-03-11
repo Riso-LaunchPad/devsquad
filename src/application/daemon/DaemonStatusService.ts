@@ -8,9 +8,14 @@ export interface DaemonState {
 }
 
 export class DaemonStatusService {
-  private static readonly STATUS_CHANNEL = 'general';
+  private readonly statusChannel: string;
 
-  constructor(private readonly slack: SlackService) {}
+  constructor(
+    private readonly slack: SlackService,
+    statusChannel: string,
+  ) {
+    this.statusChannel = statusChannel;
+  }
 
   /**
    * Called at daemon startup.
@@ -28,23 +33,21 @@ export class DaemonStatusService {
     if (!state) {
       // First start — create the status thread
       const result = await this.slack.send(
-        DaemonStatusService.STATUS_CHANNEL,
+        this.statusChannel,
         `🟢 *DevSquad Daemon started* — ${now}`,
       );
       await this.saveState({
-        channelId: DaemonStatusService.STATUS_CHANNEL,
+        channelId: this.statusChannel,
         threadTs: result.ts,
       });
     } else if (crashed) {
-      // Previous session crashed
-      await this.slack.reply(
+      await this.slack.edit(
         state.channelId,
         state.threadTs,
         `⚠️ *Daemon recovered from crash* — restarted at ${now}`,
       );
     } else {
-      // Clean restart
-      await this.slack.reply(
+      await this.slack.edit(
         state.channelId,
         state.threadTs,
         `🟢 *Daemon restarted* — ${now}`,
@@ -64,7 +67,7 @@ export class DaemonStatusService {
     const now = new Date().toLocaleString();
 
     if (state) {
-      await this.slack.reply(state.channelId, state.threadTs, `🔴 *Daemon stopped* — ${now}`);
+      await this.slack.edit(state.channelId, state.threadTs, `🔴 *Daemon stopped* — ${now}`);
     }
 
     await this.writeShutdownFlag();

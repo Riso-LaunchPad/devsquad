@@ -9,6 +9,7 @@ export interface DevsquadConfig {
   redis_host?: string;
   redis_port?: number;
   redis_password?: string;
+  slack_status_channel?: string;
 }
 
 const DEFAULT_CONFIG: DevsquadConfig = {

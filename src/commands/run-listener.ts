@@ -24,7 +24,8 @@ export async function runListenerCommand(): Promise<void> {
     password: config.redis_password,
   });
 
-  const statusSvc = new DaemonStatusService(slack);
+  const statusChannel = config.slack_status_channel ?? 'general';
+  const statusSvc = new DaemonStatusService(slack, statusChannel);
   const daemon = new SlackListenerDaemon(slack, redis);
 
   // Graceful shutdown
