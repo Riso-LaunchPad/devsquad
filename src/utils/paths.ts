@@ -32,3 +32,7 @@ export function getDaemonStatePath(): string {
 export function getDaemonShutdownFlagPath(): string {
   return path.join(getDevsquadHome(), 'daemon.shutdown');
 }
+
+export function getTeamStatePath(): string {
+  return path.join(getDevsquadHome(), 'team-state.json');
+}

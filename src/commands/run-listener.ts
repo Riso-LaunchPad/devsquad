@@ -4,6 +4,8 @@ import { SlackBoltSocket } from '../infra/slack/SlackBoltSocket';
 import { RedisService } from '../infra/redis/RedisService';
 import { SlackListenerDaemon } from '../application/daemon/SlackListenerDaemon';
 import { DaemonStatusService } from '../application/daemon/DaemonStatusService';
+import { TeamStatusService } from '../application/daemon/TeamStatusService';
+import { DockerService } from '../infra/docker/DockerService';
 import { loadConfig } from '../utils/config';
 
 export async function runListenerCommand(): Promise<void> {
@@ -26,14 +28,23 @@ export async function runListenerCommand(): Promise<void> {
 
   const statusChannel = config.slack_status_channel ?? 'general';
   const statusSvc = new DaemonStatusService(slack, statusChannel);
+  const docker = new DockerService();
+  const teamStatus = new TeamStatusService(slack, statusChannel, docker);
   const daemon = new SlackListenerDaemon(slack, redis);
 
   // TEST BINDING — remove after testing
   daemon.bind('C0AK5K4QGNA', 'test-project');
 
+  // Poll docker every 30s and update team status
+  const TEAM_POLL_INTERVAL_MS = 30_000;
+  const teamPollTimer = setInterval(() => {
+    teamStatus.refresh().catch(err => console.error('teamStatus.refresh error:', err));
+  }, TEAM_POLL_INTERVAL_MS);
+
   // Graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...');
+    clearInterval(teamPollTimer);
     await daemon.stop();
     await statusSvc.onStop();
     process.exit(0);
@@ -43,6 +54,7 @@ export async function runListenerCommand(): Promise<void> {
   process.on('SIGINT', shutdown);
 
   await statusSvc.onStart();
+  await teamStatus.onStart();
   await daemon.start();
 
   console.log('Slack listener daemon running');

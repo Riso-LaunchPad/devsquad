@@ -38,6 +38,9 @@ export function daemonCommand(program: Command): void {
           label: LISTENER_LABEL,
           program: node,
           args: [bin, '_run-listener'],
+          envVars: {
+            PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+          },
           keepAlive: true,
         });
 
