@@ -5,6 +5,7 @@ import { daemonCommand } from './commands/daemon';
 import { projectCommand } from './commands/project';
 import { runListenerCommand } from './commands/run-listener';
 import { runProcessorCommand } from './commands/run-processor';
+import { slackCommand } from './commands/slack';
 
 const program = new Command();
 
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
 
   daemonCommand(program);
   projectCommand(program);
+  slackCommand(program);
 
   program
     .command('_run-listener')
