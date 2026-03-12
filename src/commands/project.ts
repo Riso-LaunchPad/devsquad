@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { exec as execCb } from 'child_process';
 import { promisify } from 'util';
 import { Command } from 'commander';
@@ -14,6 +15,25 @@ import { loadConfig } from '../utils/config';
 const exec = promisify(execCb);
 const svc = new ProjectService();
 const mgr = new LaunchDaemonManager();
+
+const GITIGNORE_ENTRIES = [
+  '# devsquad — orchestrator runtime files',
+  'session/'
+];
+
+async function ensureGitignore(dir: string): Promise<void> {
+  const filePath = path.join(dir, '.gitignore');
+  let existing = '';
+  try {
+    existing = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    // file doesn't exist yet
+  }
+  const missing = GITIGNORE_ENTRIES.filter(e => !existing.includes(e));
+  if (missing.length === 0) return;
+  const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+  await fs.writeFile(filePath, existing + separator + missing.join('\n') + '\n', 'utf-8');
+}
 
 export function projectCommand(program: Command): void {
   const project = program
@@ -71,7 +91,10 @@ export function projectCommand(program: Command): void {
         await startTmuxSession(session, window);
         console.log('✓');
 
-        // 4. Save project
+        // 4. Update .gitignore in cwd
+        await ensureGitignore(process.cwd());
+
+        // 5. Save project
         const projectConfig = {
           name,
           channelId: channel.id,
