@@ -194,7 +194,7 @@ export function projectCommand(program: Command): void {
     .description('Update an agent status in the project status message (called by Gemini Orchestrator)')
     .requiredOption('--name <name>', 'Project name')
     .requiredOption('--agent <agent>', 'Agent container name (e.g. agent-claude-lead)')
-    .requiredOption('--status <status>', 'Status: Standby|Working|Done|Error')
+    .requiredOption('--status <status>', 'Status: Dead|Standby|Working|Done|Error  (Done auto-reverts to Standby)')
     .action(async (opts) => {
       try {
         const projectConfig = await svc.get(opts.name);

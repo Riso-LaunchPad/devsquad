@@ -76,7 +76,8 @@ export class ProjectStatusService {
     const state = await this.loadState(project.name);
     if (!state) return;
 
-    state.agentStatuses[agentName] = status;
+    // 'Done' reverts to Standby — agents cycle: Dead → Standby → Working → Standby
+    state.agentStatuses[agentName] = status === 'Done' ? 'Standby' : status;
 
     await this.slack.edit(state.channelId, state.messageTs, buildMessage(state));
     await this.saveState(project.name, state);
@@ -178,10 +179,10 @@ function phaseEmoji(phase: OrchestratorPhase): string {
 
 function agentEmoji(status: string): string {
   switch (status) {
+    case 'Dead':    return '⚫';
     case 'Standby': return '⚪';
     case 'Working': return '🟡';
-    case 'Done':    return '🟢';
     case 'Error':   return '🔴';
-    default:        return '🔵';
+    default:        return '⚪';
   }
 }
