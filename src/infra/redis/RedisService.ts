@@ -16,7 +16,26 @@ export class RedisService implements IRedisService {
       port: config.port,
       password: config.password,
       lazyConnect: true,
+      retryStrategy: (times) => {
+        const delay = Math.min(times * 500, 5000);
+        console.warn(`[RedisService] reconnecting attempt ${times}, delay ${delay}ms`);
+        return delay;
+      },
     });
+
+    this.client.on('error', (err) => {
+      console.error('[RedisService] connection error:', err.message);
+    });
+    this.client.on('connect', () => {
+      console.log('[RedisService] connected');
+    });
+    this.client.on('reconnecting', () => {
+      console.warn('[RedisService] reconnecting...');
+    });
+  }
+
+  async connect(): Promise<void> {
+    await this.client.connect();
   }
 
   async push(key: string, value: string): Promise<void> {

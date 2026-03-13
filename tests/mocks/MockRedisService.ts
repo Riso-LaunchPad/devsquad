@@ -4,6 +4,10 @@ export class MockRedisService implements IRedisService {
   queues = new Map<string, string[]>();
   quit_called = false;
 
+  async connect(): Promise<void> {
+    // no-op for mock
+  }
+
   async push(key: string, value: string): Promise<void> {
     const q = this.queues.get(key) ?? [];
     q.push(value);

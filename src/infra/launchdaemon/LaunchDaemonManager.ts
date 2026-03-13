@@ -90,6 +90,8 @@ ${argsXml}
 \t</array>
 ${envXml}\t<key>KeepAlive</key>
 \t<${keepAlive}/>
+\t<key>ThrottleInterval</key>
+\t<integer>10</integer>
 \t<key>RunAtLoad</key>
 \t<true/>
 \t<key>StandardOutPath</key>

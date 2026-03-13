@@ -215,8 +215,9 @@ describe('ProjectStatusService', () => {
 
       await svc.updateAgent(PROJECT, 'agent-minimax-dev', 'Done');
 
+      // 'Done' reverts to 'Standby' — agents cycle: Dead → Standby → Working → Standby
       const state = await svc.loadState('test-project');
-      expect(state?.agentStatuses['agent-minimax-dev']).toBe('Done');
+      expect(state?.agentStatuses['agent-minimax-dev']).toBe('Standby');
     });
 
     it('other agents remain Standby after one update', async () => {

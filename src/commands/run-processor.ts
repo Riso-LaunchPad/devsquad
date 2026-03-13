@@ -8,6 +8,14 @@ import { SlackBoltClient } from '../infra/slack/SlackBoltClient';
 import { loadConfig } from '../utils/config';
 
 export async function runProcessorCommand(projectName: string): Promise<void> {
+  process.on('unhandledRejection', (reason) => {
+    console.error(`[processor:${projectName}] unhandledRejection:`, reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error(`[processor:${projectName}] uncaughtException:`, err);
+    process.exit(1);
+  });
+
   const config = await loadConfig();
   const svc = new ProjectService();
   const project = await svc.get(projectName);
@@ -22,6 +30,9 @@ export async function runProcessorCommand(projectName: string): Promise<void> {
     port: config.redis_port ?? 6379,
     password: config.redis_password,
   });
+
+  await redis.connect();
+  console.log(`[processor:${projectName}] Redis connected`);
 
   const tmux = new TmuxService();
   const processor = new MessageProcessorDaemon(

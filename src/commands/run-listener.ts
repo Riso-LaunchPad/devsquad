@@ -10,6 +10,14 @@ import { ProjectService } from '../application/project/ProjectService';
 import { loadConfig } from '../utils/config';
 
 export async function runListenerCommand(): Promise<void> {
+  process.on('unhandledRejection', (reason) => {
+    console.error('[listener] unhandledRejection:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[listener] uncaughtException:', err);
+    process.exit(1);
+  });
+
   const config = await loadConfig();
 
   if (!config.slack_bot_token || !config.slack_app_token) {
@@ -29,6 +37,10 @@ export async function runListenerCommand(): Promise<void> {
     port: config.redis_port ?? 6379,
     password: config.redis_password,
   });
+
+  // Ensure Redis is connected before starting the listener
+  await redis.connect();
+  console.log('[listener] Redis connected');
 
   const statusChannel = config.slack_status_channel ?? 'general';
   const statusSvc = new DaemonStatusService(slack, statusChannel);

@@ -9,6 +9,8 @@ const mockRedis = {
   del: vi.fn(),
   ping: vi.fn(),
   quit: vi.fn(),
+  connect: vi.fn(),
+  on: vi.fn(),
 };
 
 vi.mock('ioredis', () => ({

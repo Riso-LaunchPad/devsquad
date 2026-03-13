@@ -1,4 +1,7 @@
 export interface IRedisService {
+  /** Explicitly establish connection */
+  connect(): Promise<void>;
+
   /** Push message to the right of a list (producer) */
   push(key: string, value: string): Promise<void>;
 

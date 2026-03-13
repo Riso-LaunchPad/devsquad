@@ -30,7 +30,11 @@ export class SlackService {
   async start(): Promise<void> {
     await this.socket.connect(async (msg) => {
       for (const listener of this.listeners) {
-        await listener(msg);
+        try {
+          await listener(msg);
+        } catch (err) {
+          console.error('[SlackService] listener error:', err);
+        }
       }
     });
   }
