@@ -20,25 +20,35 @@ export class SlackSocketModeAdapter implements ISlackSocket {
   private connected = false;
   private lastRealMessageAt = Date.now();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private messageHandler: MessageHandler | null = null;
 
   /** If no real (non-subtype) message arrives within this window, force reconnect */
   private static readonly WATCHDOG_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private static readonly WATCHDOG_CHECK_MS = 60 * 1000; // check every 60s
+  private reconnecting = false;
 
-  constructor(_botToken: string, appToken: string) {
-    this.socketClient = new SocketModeClient({
-      appToken,
-      autoReconnectEnabled: true,
-      clientPingTimeout: 5_000,   // 5s — wait for pong from server
-      serverPingTimeout: 15_000,  // 15s — expect ping from server (default 30s, tighter)
-    });
+  constructor(_botToken: string, private readonly appToken: string) {
+    this.socketClient = this.createClient();
   }
 
   async connect(onMessage: MessageHandler): Promise<void> {
+    this.messageHandler = onMessage;
+    this.setupEventHandlers(onMessage);
+
+    await this.socketClient.start();
+    this.connected = true;
+    this.lastRealMessageAt = Date.now();
+    console.log(`[${ts()}] [SocketMode] started`);
+
+    // Start watchdog — force reconnect if no real messages for too long
+    this.startWatchdog();
+  }
+
+  private setupEventHandlers(onMessage: MessageHandler): void {
     // Connection lifecycle logging
     this.socketClient.on('connected', () => {
       this.connected = true;
-      this.lastRealMessageAt = Date.now(); // reset watchdog on fresh connection
+      this.lastRealMessageAt = Date.now();
       console.log(`[${ts()}] [SocketMode] connected`);
     });
 
@@ -56,34 +66,26 @@ export class SlackSocketModeAdapter implements ISlackSocket {
     });
 
     // Single handler for ALL Slack events via the catch-all emitter.
-    // We handle message routing here instead of listening on 'message'
-    // to avoid potential conflicts with Node.js EventEmitter internals.
     this.socketClient.on('slack_event', async ({ ack, type, body, retry_num, retry_reason }) => {
       const evt = body?.event;
 
-      // Log every envelope we receive
       console.log(`[${ts()}] [SocketMode] envelope: type=${type} event=${evt?.type ?? 'n/a'} subtype=${evt?.subtype ?? 'n/a'} channel=${evt?.channel ?? 'n/a'}`);
 
-      // Ack immediately to prevent Slack retries
       await ack();
 
-      // Only process message events from events_api envelopes
       if (type !== 'events_api' || !evt || evt.type !== 'message') return;
 
       if (retry_num !== undefined && retry_num > 0) {
         console.log(`[${ts()}] [SocketMode] retry #${retry_num}, reason: ${retry_reason}`);
       }
 
-      // Filter out subtypes (edits, deletes, joins, etc.) — only plain user messages
       if (evt.subtype) return;
 
-      // Filter out bot/app messages
       if (evt.bot_id || evt.app_id) {
         console.log(`[${ts()}] [SocketMode] bot message from ${evt.bot_id || evt.app_id}, skipping`);
         return;
       }
 
-      // Real user message — reset watchdog
       this.lastRealMessageAt = Date.now();
 
       console.log(`[${ts()}] [SocketMode] message: channel=${evt.channel} user=${evt.user} text="${(evt.text ?? '').substring(0, 80)}"`);
@@ -103,14 +105,6 @@ export class SlackSocketModeAdapter implements ISlackSocket {
         console.error(`[${ts()}] [SocketMode] message handler error:`, err);
       }
     });
-
-    await this.socketClient.start();
-    this.connected = true;
-    this.lastRealMessageAt = Date.now();
-    console.log(`[${ts()}] [SocketMode] started`);
-
-    // Start watchdog — force reconnect if no real messages for too long
-    this.startWatchdog();
   }
 
   async disconnect(): Promise<void> {
@@ -126,16 +120,32 @@ export class SlackSocketModeAdapter implements ISlackSocket {
 
   private startWatchdog(): void {
     this.watchdogTimer = setInterval(async () => {
+      if (this.reconnecting) return;
+
       const silenceMs = Date.now() - this.lastRealMessageAt;
       const silenceSec = Math.round(silenceMs / 1000);
 
       if (silenceMs > SlackSocketModeAdapter.WATCHDOG_TIMEOUT_MS) {
         console.log(`[${ts()}] [SocketMode] watchdog: no real messages for ${silenceSec}s — forcing reconnect`);
+        this.reconnecting = true;
         try {
+          // disconnect() sets shuttingDown=true internally, which prevents
+          // auto-reconnect. So we must explicitly create a new client and start() it.
           await this.socketClient.disconnect();
-          // SocketModeClient auto-reconnect will kick in after disconnect
+          console.log(`[${ts()}] [SocketMode] watchdog: old connection closed`);
+
+          // Create fresh client — reusing the old one after disconnect() is unreliable
+          // because shuttingDown flag blocks reconnection logic
+          this.socketClient = this.createClient();
+          this.setupEventHandlers(this.messageHandler!);
+          await this.socketClient.start();
+          this.connected = true;
+          this.lastRealMessageAt = Date.now();
+          console.log(`[${ts()}] [SocketMode] watchdog: reconnected successfully`);
         } catch (err) {
           console.error(`[${ts()}] [SocketMode] watchdog reconnect error:`, err);
+        } finally {
+          this.reconnecting = false;
         }
       } else {
         console.log(`[${ts()}] [SocketMode] watchdog: OK (last real message ${silenceSec}s ago)`);
@@ -149,5 +159,14 @@ export class SlackSocketModeAdapter implements ISlackSocket {
       clearInterval(this.watchdogTimer);
       this.watchdogTimer = null;
     }
+  }
+
+  private createClient(): SocketModeClient {
+    return new SocketModeClient({
+      appToken: this.appToken,
+      autoReconnectEnabled: true,
+      clientPingTimeout: 5_000,
+      serverPingTimeout: 15_000,
+    });
   }
 }

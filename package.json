@@ -1,6 +1,6 @@
 {
   "name": "devsquad",
-  "version": "2.12.8",
+  "version": "2.12.9",
   "description": "CLI tool bridging Slack with Gemini Orchestrator sessions",
   "main": "dist/cli.js",
   "bin": {
