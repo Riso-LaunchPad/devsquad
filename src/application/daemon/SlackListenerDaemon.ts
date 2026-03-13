@@ -36,12 +36,6 @@ export class SlackListenerDaemon {
     this.running = true;
 
     this.slack.onMessage(async (msg: IncomingSlackMessage) => {
-      // Hardcoded: status channel always routes to queue:general (for testing)
-      if (msg.channel === 'C0AK5K4QGNA') {
-        await this.redis.push('queue:general', JSON.stringify(msg));
-        return;
-      }
-
       const project = this.bindings.get(msg.channel);
       if (!project) return;
 

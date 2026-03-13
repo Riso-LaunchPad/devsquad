@@ -1,6 +1,6 @@
 {
   "name": "devsquad",
-  "version": "2.11.9",
+  "version": "2.12.0",
   "description": "CLI tool bridging Slack with Gemini Orchestrator sessions",
   "main": "dist/cli.js",
   "bin": {
@@ -16,6 +16,7 @@
   "license": "MIT",
   "dependencies": {
     "@slack/bolt": "^4.6.0",
+    "@slack/socket-mode": "^2.0.6",
     "@slack/web-api": "^7.9.0",
     "commander": "^12.1.0",
     "express": "^5.2.1",

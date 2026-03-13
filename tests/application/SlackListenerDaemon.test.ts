@@ -92,7 +92,8 @@ describe('SlackListenerDaemon', () => {
     expect(await redis.len('queue:project-alpha')).toBe(0);
   });
 
-  it('routes hardcoded status channel C0AK5K4QGNA to queue:general', async () => {
+  it('routes any bound channel including general', async () => {
+    daemon.bind('C0AK5K4QGNA', 'general');
     await daemon.start();
 
     await socket.simulateMessage(makeMessage('C0AK5K4QGNA', 'test from general'));
@@ -103,13 +104,13 @@ describe('SlackListenerDaemon', () => {
     expect(parsed.text).toBe('test from general');
   });
 
-  it('status channel routing does not require a binding', async () => {
-    // no bindings at all
+  it('unbound channel messages are ignored', async () => {
+    // no bindings at all — messages should be dropped
     await daemon.start();
 
-    await socket.simulateMessage(makeMessage('C0AK5K4QGNA', 'no binding needed'));
+    await socket.simulateMessage(makeMessage('C0AK5K4QGNA', 'no binding'));
 
-    expect(await redis.len('queue:general')).toBe(1);
+    expect(await redis.len('queue:general')).toBe(0);
   });
 
   it('getBindings returns all bindings', () => {
