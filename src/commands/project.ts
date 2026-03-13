@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as crypto from 'crypto';
 import { exec as execCb } from 'child_process';
 import { promisify } from 'util';
 import { Command } from 'commander';
@@ -11,6 +12,7 @@ import { LaunchDaemonManager } from '../infra/launchdaemon';
 import { processorLabel } from './daemon';
 import { DaemonStatusService } from '../application/daemon/DaemonStatusService';
 import { loadConfig } from '../utils/config';
+import { print } from 'ioredis';
 
 const exec = promisify(execCb);
 const svc = new ProjectService();
@@ -86,9 +88,10 @@ export function projectCommand(program: Command): void {
           console.log('✓');
         }
 
-        // 3. Start tmux session
+        // 3. Start tmux session with Claude CLI
+        const claudeSessionId = crypto.randomUUID();
         process.stdout.write(`  Starting tmux "${session}:${window}"... `);
-        await startTmuxSession(session, window);
+        await startTmuxSession(session, window, { sessionId: claudeSessionId });
         console.log('✓');
 
         // 4. Update .gitignore in cwd
@@ -100,6 +103,7 @@ export function projectCommand(program: Command): void {
           channelId: channel.id,
           tmuxSession: session,
           tmuxWindow: window,
+          claudeSessionId,
         };
         await svc.add(projectConfig);
 
@@ -232,9 +236,12 @@ export function projectCommand(program: Command): void {
           process.exit(1);
         }
 
-        // Kill tmux session
+        // Gracefully close Claude session before killing tmux
         process.stdout.write(`  Stopping tmux session "${projectConfig.tmuxSession}"... `);
         try {
+          // Send Ctrl+D twice to gracefully exit Claude
+          await exec(`tmux send-keys -t "${projectConfig.tmuxSession}" C-d C-d`);
+          await new Promise(r => setTimeout(r, 500));
           await exec(`tmux kill-session -t "${projectConfig.tmuxSession}"`);
           console.log('✓');
         } catch {
@@ -284,9 +291,33 @@ export function projectCommand(program: Command): void {
 
         const window = opts.window ?? projectConfig.tmuxWindow;
 
-        // Restart tmux session
+        // Restart tmux session with Claude CLI (resume previous session if available)
         process.stdout.write(`  Starting tmux "${projectConfig.tmuxSession}:${window}"... `);
-        await startTmuxSession(projectConfig.tmuxSession, window);
+        if (!projectConfig.claudeSessionId) {
+          // Legacy project without session ID — generate one
+          projectConfig.claudeSessionId = crypto.randomUUID();
+          await svc.update(name, { claudeSessionId: projectConfig.claudeSessionId });
+        }
+
+        // Try to resume with existing session ID, fall back to new session if failed
+        try {
+          await startTmuxSession(projectConfig.tmuxSession, window, {
+            sessionId: projectConfig.claudeSessionId,
+            resume: true,
+          });
+        } catch (err) {
+          // Session not found (Claude was killed abruptly) — generate new session ID
+          if (err instanceof Error && err.message.includes('No conversation found')) {
+            projectConfig.claudeSessionId = crypto.randomUUID();
+            await svc.update(name, { claudeSessionId: projectConfig.claudeSessionId });
+            await startTmuxSession(projectConfig.tmuxSession, window, {
+              sessionId: projectConfig.claudeSessionId,
+              resume: false,
+            });
+          } else {
+            throw err;
+          }
+        }
         console.log('✓');
 
         // Reload processor daemon
@@ -457,17 +488,38 @@ export function projectCommand(program: Command): void {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function startTmuxSession(session: string, window: string): Promise<void> {
+interface ClaudeSessionOpts {
+  sessionId: string;
+  resume?: boolean;
+}
+
+function buildClaudeCommand(opts: ClaudeSessionOpts): string {
+  const flags = ['--dangerously-skip-permissions'];
+  if (opts.resume) {
+    flags.push('--resume', opts.sessionId);
+  } else {
+    flags.push('--session-id', opts.sessionId);
+  }
+  flags.push("'start session'");
+  return `claude ${flags.join(' ')}`;
+}
+
+async function startTmuxSession(session: string, window: string, opts: ClaudeSessionOpts): Promise<void> {
+  const cmd = buildClaudeCommand(opts);
   try {
     await exec(`tmux has-session -t "${session}" 2>/dev/null`);
     // Session exists — ensure window exists
     try {
-      await exec(`tmux new-window -t "${session}" -n "${window}" "gemini --yolo 'start session'" 2>/dev/null`);
+      const execCmd = `tmux new-window -t "${session}" -n "${window}" "${cmd}" 2>/dev/null`;
+      console.log(`    → exec: ${execCmd}`);
+      await exec(execCmd);
     } catch {
       // window may already exist
     }
   } catch {
     // Session does not exist — create it
-    await exec(`tmux new-session -d -s "${session}" -n "${window}" "gemini --yolo 'start session'"`);
+    const execCmd = `tmux new-session -d -s "${session}" -n "${window}" "${cmd}"`;
+    console.log(`    → exec: ${execCmd}`);
+    await exec(execCmd);
   }
 }

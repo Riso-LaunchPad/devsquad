@@ -7,6 +7,9 @@ import { runListenerCommand } from './commands/run-listener';
 import { runProcessorCommand } from './commands/run-processor';
 import { slackCommand } from './commands/slack';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { version } = require('../package.json');
+
 const program = new Command();
 
 async function main(): Promise<void> {
@@ -14,8 +17,8 @@ async function main(): Promise<void> {
 
   program
     .name('devsquad')
-    .description('CLI tool bridging Slack with Gemini Orchestrator sessions')
-    .version('2.0.0');
+    .description('CLI tool bridging Slack with Claude Orchestrator sessions')
+    .version(version);
 
   program
     .command('config')

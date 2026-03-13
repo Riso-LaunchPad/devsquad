@@ -5,8 +5,9 @@ export interface ProjectConfig {
   name: string;              // unique key, used as Redis queue key
   channelId: string;         // Slack channel ID
   tmuxSession: string;       // tmux session name
-  tmuxWindow: string;        // tmux window name (running Gemini CLI as Orchestrator)
+  tmuxWindow: string;        // tmux window name (running Claude CLI as Orchestrator)
   statusMessageTs?: string;  // ts of the pinned status message in Slack
+  claudeSessionId?: string;  // Claude CLI session ID for resuming conversations
 }
 
 export class ProjectService {
