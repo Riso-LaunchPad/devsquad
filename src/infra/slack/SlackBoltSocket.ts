@@ -9,11 +9,10 @@ export class SlackBoltSocket implements ISlackSocket {
   private connected = false;
   private healthInterval: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
-  private lastMessageAt = 0;
+  private onMessage: MessageHandler | null = null;
 
-  private static readonly HEALTH_INTERVAL_MS = 30_000; // 30s instead of 60s
+  private static readonly HEALTH_INTERVAL_MS = 30_000;
   private static readonly MAX_RECONNECT_ATTEMPTS = 5;
-  private static readonly STALE_THRESHOLD_MS = 5 * 60_000; // 5 min no messages = suspect
 
   constructor(
     private botToken: string,
@@ -21,45 +20,8 @@ export class SlackBoltSocket implements ISlackSocket {
   ) {}
 
   async connect(onMessage: MessageHandler): Promise<void> {
-    this.app = new App({
-      token: this.botToken,
-      appToken: this.appToken,
-      socketMode: true,
-      logLevel: LogLevel.WARN,
-    });
-
-    // Register global error handler to prevent silent failures
-    this.app.error(async (error) => {
-      console.error('[SlackBoltSocket] app.error:', error);
-    });
-
-    this.app.message(/.*/, async (args: SlackEventMiddlewareArgs<'message'>) => {
-      const msg: any = args.message;
-      console.log('[SlackBoltSocket] raw event:', JSON.stringify({ type: msg?.type, bot_id: msg?.bot_id, app_id: msg?.app_id, channel: msg?.channel, user: msg?.user }));
-      if (!msg || msg.type !== 'message' || msg.bot_id || msg.app_id) return;
-
-      const incoming: IncomingSlackMessage = {
-        channel: msg.channel,
-        user: msg.user ?? 'unknown',
-        text: msg.text ?? '',
-        ts: msg.ts,
-        threadTs: msg.thread_ts,
-      };
-
-      try {
-        await onMessage(incoming);
-        this.lastMessageAt = Date.now();
-      } catch (err) {
-        console.error('[SlackBoltSocket] message handler error (message dropped):', err);
-        // Swallow error so @slack/bolt middleware chain is not broken
-      }
-    });
-
-    await this.app.start();
-    this.connected = true;
-    this.reconnectAttempts = 0;
-    this.lastMessageAt = Date.now();
-    console.log('[SlackBoltSocket] connected via Socket Mode');
+    this.onMessage = onMessage;
+    await this.createApp();
     this.startHealthPing();
   }
 
@@ -79,21 +41,62 @@ export class SlackBoltSocket implements ISlackSocket {
     return this.connected;
   }
 
+  /**
+   * Creates a fresh App instance with all handlers registered.
+   * Must be called for initial connect AND every reconnect,
+   * because app.stop()+app.start() does not reliably restore
+   * Socket Mode event subscriptions.
+   */
+  private async createApp(): Promise<void> {
+    // Clean up previous instance
+    if (this.app) {
+      try { await this.app.stop(); } catch { /* ignore */ }
+      this.app = null;
+    }
+
+    this.app = new App({
+      token: this.botToken,
+      appToken: this.appToken,
+      socketMode: true,
+      logLevel: LogLevel.WARN,
+    });
+
+    // Global error handler to prevent silent failures
+    this.app.error(async (error) => {
+      console.error('[SlackBoltSocket] app.error:', error);
+    });
+
+    this.app.message(/.*/, async (args: SlackEventMiddlewareArgs<'message'>) => {
+      const msg: any = args.message;
+      console.log('[SlackBoltSocket] raw event:', JSON.stringify({ type: msg?.type, bot_id: msg?.bot_id, app_id: msg?.app_id, channel: msg?.channel, user: msg?.user }));
+      if (!msg || msg.type !== 'message' || msg.bot_id || msg.app_id) return;
+
+      const incoming: IncomingSlackMessage = {
+        channel: msg.channel,
+        user: msg.user ?? 'unknown',
+        text: msg.text ?? '',
+        ts: msg.ts,
+        threadTs: msg.thread_ts,
+      };
+
+      try {
+        await this.onMessage!(incoming);
+      } catch (err) {
+        console.error('[SlackBoltSocket] message handler error (message dropped):', err);
+      }
+    });
+
+    await this.app.start();
+    this.connected = true;
+    this.reconnectAttempts = 0;
+    console.log('[SlackBoltSocket] connected via Socket Mode');
+  }
+
   private startHealthPing(): void {
     this.healthInterval = setInterval(async () => {
       try {
         const result = await (this.app!.client as any).api.test();
         if (!result.ok) throw new Error('api.test returned not ok');
-
-        // Also check if we haven't received any messages in a long time
-        // This detects zombie Socket Mode connections where REST API is fine but socket is dead
-        const silentMs = Date.now() - this.lastMessageAt;
-        if (silentMs > SlackBoltSocket.STALE_THRESHOLD_MS) {
-          console.warn(`[SlackBoltSocket] no messages for ${Math.round(silentMs / 1000)}s, forcing reconnect`);
-          throw new Error('stale socket connection');
-        }
-
-        // Reset reconnect counter on successful health check
         this.reconnectAttempts = 0;
       } catch (err) {
         this.connected = false;
@@ -119,15 +122,11 @@ export class SlackBoltSocket implements ISlackSocket {
     await this.sleep(delayMs);
 
     try {
-      await this.app!.stop();
-      await this.app!.start();
-      this.connected = true;
-      this.lastMessageAt = Date.now();
-      this.reconnectAttempts = 0;
+      // Create entirely new App instance — app.stop()+app.start() loses Socket Mode subscriptions
+      await this.createApp();
       console.log('[SlackBoltSocket] reconnected successfully');
     } catch (err) {
       console.error('[SlackBoltSocket] reconnect failed:', err);
-      // Will retry on next health ping cycle
     }
   }
 
