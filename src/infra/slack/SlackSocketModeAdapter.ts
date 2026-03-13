@@ -1,5 +1,4 @@
 import { SocketModeClient } from '@slack/socket-mode';
-import { WebClient } from '@slack/web-api';
 import { ISlackSocket, IncomingSlackMessage, MessageHandler } from '../../domain/slack';
 
 /**
@@ -10,11 +9,9 @@ import { ISlackSocket, IncomingSlackMessage, MessageHandler } from '../../domain
  */
 export class SlackSocketModeAdapter implements ISlackSocket {
   private socketClient: SocketModeClient;
-  private webClient: WebClient;
   private connected = false;
 
-  constructor(botToken: string, appToken: string) {
-    this.webClient = new WebClient(botToken);
+  constructor(_botToken: string, appToken: string) {
     this.socketClient = new SocketModeClient({
       appToken,
       // Built-in auto-reconnect — no manual health checks needed
@@ -41,17 +38,45 @@ export class SlackSocketModeAdapter implements ISlackSocket {
       console.error('[SocketMode] unable to start:', err);
     });
 
-    // Handle Events API envelopes (which include message events)
-    this.socketClient.on('slack_event', async ({ ack, body, retry_num, retry_reason }) => {
-      // Acknowledge immediately to prevent Slack from retrying
+    // DEBUG: Log ALL events from SocketModeClient to see what Slack sends
+    this.socketClient.on('slack_event', async ({ ack, type, body, retry_num }) => {
+      const evt = body?.event;
+      console.log('[SocketMode] raw_envelope:', JSON.stringify({
+        envelope_type: type,
+        event_type: evt?.type,
+        subtype: evt?.subtype,
+        channel: evt?.channel,
+        user: evt?.user,
+        bot_id: evt?.bot_id,
+        text: evt?.text?.substring(0, 50),
+        retry: retry_num,
+      }));
+
+      // Only ack here if nobody else handles it
+      // (the 'message' listener below will ack message events)
+      if (evt?.type !== 'message') {
+        await ack();
+      }
+    });
+
+    // Listen on 'message' — SocketModeClient emits event.payload.event.type
+    // for events_api envelopes, so message events emit as 'message'.
+    this.socketClient.on('message', async ({ ack, event, retry_num, retry_reason }) => {
       await ack();
 
-      if (retry_num !== undefined) {
-        console.log(`[SocketMode] received retry #${retry_num}, reason: ${retry_reason}`);
+      if (retry_num !== undefined && retry_num > 0) {
+        console.log(`[SocketMode] retry #${retry_num}, reason: ${retry_reason}`);
       }
 
-      const event = body?.event;
-      if (!event || event.type !== 'message') return;
+      console.log('[SocketMode] >>> message:', JSON.stringify({
+        subtype: event?.subtype,
+        channel: event?.channel,
+        user: event?.user,
+        bot_id: event?.bot_id,
+        text: event?.text?.substring(0, 50),
+      }));
+
+      if (!event) return;
 
       // Filter out bot/app messages
       if (event.bot_id || event.app_id) return;
@@ -69,6 +94,7 @@ export class SlackSocketModeAdapter implements ISlackSocket {
 
       try {
         await onMessage(incoming);
+        console.log('[SocketMode] >>> pushed to handler OK');
       } catch (err) {
         console.error('[SocketMode] message handler error:', err);
       }

@@ -49,14 +49,20 @@ export async function runListenerCommand(): Promise<void> {
   const teamStatus = new TeamStatusService(slack, statusChannel, docker);
   const slackDaemon = new SlackListenerDaemon(slack, redis);
 
+  // Always route the status channel (#general) to queue:general for testing
+  slackDaemon.bind(statusChannel, 'general');
+  console.log(`[listener] default binding: ${statusChannel} → general`);
+
+  const protectedChannels = new Set([statusChannel]);
+
   // Load initial project bindings
-  await reloadBindings(slackDaemon, projectSvc);
+  await reloadBindings(slackDaemon, projectSvc, protectedChannels);
 
   // Periodically reload project bindings so new projects are picked up
   // without needing to restart the listener
   const reloadTimer = setInterval(async () => {
     try {
-      await reloadBindings(slackDaemon, projectSvc);
+      await reloadBindings(slackDaemon, projectSvc, protectedChannels);
     } catch (err) {
       console.error('[listener] binding reload error:', err);
     }
@@ -93,7 +99,11 @@ export async function runListenerCommand(): Promise<void> {
  * Sync project bindings from projects.json into the listener daemon.
  * Adds new bindings and removes stale ones without restarting.
  */
-async function reloadBindings(daemon: SlackListenerDaemon, projectSvc: ProjectService): Promise<void> {
+async function reloadBindings(
+  daemon: SlackListenerDaemon,
+  projectSvc: ProjectService,
+  protectedChannels: Set<string>,
+): Promise<void> {
   const projects = await projectSvc.loadAll();
   const desired = new Map(projects.map(p => [p.channelId, p.name]));
   const current = new Map(daemon.getBindings().map(b => [b.channelId, b.project]));
@@ -106,9 +116,9 @@ async function reloadBindings(daemon: SlackListenerDaemon, projectSvc: ProjectSe
     }
   }
 
-  // Remove stale bindings
+  // Remove stale bindings (but never remove protected default bindings)
   for (const [channelId, project] of current) {
-    if (!desired.has(channelId)) {
+    if (!desired.has(channelId) && !protectedChannels.has(channelId)) {
       daemon.unbind(channelId);
       console.log(`[listener] unbound channel ${channelId} (was ${project})`);
     }
