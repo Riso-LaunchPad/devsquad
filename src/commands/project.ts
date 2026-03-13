@@ -499,8 +499,8 @@ function buildClaudeCommand(opts: ClaudeSessionOpts): string {
     flags.push('--resume', opts.sessionId);
   } else {
     flags.push('--session-id', opts.sessionId);
+    flags.push("'start session'");
   }
-  flags.push("'start session'");
   return `claude ${flags.join(' ')}`;
 }
 
