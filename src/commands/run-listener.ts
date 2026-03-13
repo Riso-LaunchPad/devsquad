@@ -12,6 +12,10 @@ import { loadConfig } from '../utils/config';
 const PROJECT_RELOAD_INTERVAL_MS = 10_000;
 const TEAM_POLL_INTERVAL_MS = 30_000;
 
+function ts(): string {
+  return new Date().toISOString();
+}
+
 export async function runListenerCommand(): Promise<void> {
   process.on('unhandledRejection', (reason) => {
     console.error('[listener] unhandledRejection:', reason);
@@ -41,7 +45,7 @@ export async function runListenerCommand(): Promise<void> {
   });
 
   await redis.connect();
-  console.log('[listener] Redis connected');
+  console.log(`[${ts()}] [listener] Redis connected`);
 
   const statusChannel = config.slack_status_channel ?? 'general';
   const statusSvc = new DaemonStatusService(slack, statusChannel);
@@ -51,7 +55,7 @@ export async function runListenerCommand(): Promise<void> {
 
   // Always route the status channel (#general) to queue:general for testing
   slackDaemon.bind(statusChannel, 'general');
-  console.log(`[listener] default binding: ${statusChannel} → general`);
+  console.log(`[${ts()}] [listener] default binding: ${statusChannel} → general`);
 
   const protectedChannels = new Set([statusChannel]);
 
@@ -64,7 +68,7 @@ export async function runListenerCommand(): Promise<void> {
     try {
       await reloadBindings(slackDaemon, projectSvc, protectedChannels);
     } catch (err) {
-      console.error('[listener] binding reload error:', err);
+      console.error(`[${ts()}] [listener] binding reload error:`, err);
     }
   }, PROJECT_RELOAD_INTERVAL_MS);
   reloadTimer.unref?.();
@@ -92,7 +96,7 @@ export async function runListenerCommand(): Promise<void> {
   await teamStatus.onStart();
   await slackDaemon.start();
 
-  console.log('[listener] Slack listener daemon running (always-on, auto-reconnect)');
+  console.log(`[${ts()}] [listener] Slack listener daemon running (always-on, auto-reconnect)`);
 }
 
 /**
@@ -112,7 +116,7 @@ async function reloadBindings(
   for (const [channelId, project] of desired) {
     if (!current.has(channelId)) {
       daemon.bind(channelId, project);
-      console.log(`[listener] bound channel ${channelId} → ${project}`);
+      console.log(`[${ts()}] [listener] bound channel ${channelId} → ${project}`);
     }
   }
 
@@ -120,7 +124,7 @@ async function reloadBindings(
   for (const [channelId, project] of current) {
     if (!desired.has(channelId) && !protectedChannels.has(channelId)) {
       daemon.unbind(channelId);
-      console.log(`[listener] unbound channel ${channelId} (was ${project})`);
+      console.log(`[${ts()}] [listener] unbound channel ${channelId} (was ${project})`);
     }
   }
 }

@@ -26,9 +26,31 @@ async function getDevsquadBin(): Promise<string> {
   return stdout.trim();
 }
 
+/**
+ * Kill any stale `_run-listener` processes that aren't managed by the
+ * current launchd job. This prevents duplicate WebSocket connections
+ * which cause Slack to split events across connections.
+ */
+async function killStaleListeners(currentPid?: number): Promise<void> {
+  try {
+    const { stdout } = await exec("ps -eo pid,args | grep '_run-listener' | grep -v grep");
+    for (const line of stdout.trim().split('\n')) {
+      const pid = parseInt(line.trim().split(/\s+/)[0], 10);
+      if (!pid || pid === currentPid) continue;
+      try {
+        process.kill(pid, 'SIGTERM');
+        console.log(`  ⚠ Killed stale listener process (PID ${pid})`);
+      } catch { /* already dead */ }
+    }
+  } catch { /* no matching processes */ }
+}
+
 async function ensureListenerRunning(): Promise<void> {
   const status = await mgr.status(LISTENER_LABEL);
-  if (status.loaded && status.pid) return;
+  if (status.loaded && status.pid) {
+    await killStaleListeners(status.pid);
+    return;
+  }
 
   const node = await getNodeBin();
   const bin = await getDevsquadBin();
@@ -148,6 +170,9 @@ export function daemonCommand(program: Command): void {
           await mgr.restart(label);
           console.log(`✓ Processor "${opts.name}" restarted`);
         } else {
+          // Kill stale listeners before restart to avoid duplicate connections
+          await killStaleListeners();
+
           // Restart listener
           await mgr.restart(LISTENER_LABEL);
           console.log('  ● Listener restarted');

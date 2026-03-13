@@ -2,6 +2,10 @@ import type { SlackService } from '../slack/SlackService';
 import type { IRedisService } from '../../domain/redis';
 import type { IncomingSlackMessage } from '../../domain/slack/ISlackSocket';
 
+function ts(): string {
+  return new Date().toISOString();
+}
+
 export interface ChannelBinding {
   channelId: string;
   project: string;
@@ -37,8 +41,12 @@ export class SlackListenerDaemon {
 
     this.slack.onMessage(async (msg: IncomingSlackMessage) => {
       const project = this.bindings.get(msg.channel);
-      if (!project) return;
+      if (!project) {
+        console.log(`[${ts()}] [daemon] no binding for channel ${msg.channel}, dropping message`);
+        return;
+      }
 
+      console.log(`[${ts()}] [daemon] channel ${msg.channel} → queue:${project}`);
       await this.redis.push(`queue:${project}`, JSON.stringify(msg));
     });
 
