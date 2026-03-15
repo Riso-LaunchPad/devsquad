@@ -5,6 +5,7 @@ import { RedisService } from '../infra/redis/RedisService';
 import { SlackListenerDaemon } from '../application/daemon/SlackListenerDaemon';
 import { DaemonStatusService } from '../application/daemon/DaemonStatusService';
 import { TeamStatusService } from '../application/daemon/TeamStatusService';
+import { AgentRegistryService } from '../application/agent/AgentRegistryService';
 import { DockerService } from '../infra/docker/DockerService';
 import { ProjectService } from '../application/project/ProjectService';
 import { loadConfig } from '../utils/config';
@@ -50,7 +51,8 @@ export async function runListenerCommand(): Promise<void> {
   const statusChannel = config.slack_status_channel ?? 'general';
   const statusSvc = new DaemonStatusService(slack, statusChannel);
   const docker = new DockerService();
-  const teamStatus = new TeamStatusService(slack, statusChannel, docker);
+  const agentRegistry = new AgentRegistryService();
+  const teamStatus = new TeamStatusService(slack, statusChannel, docker, agentRegistry);
   const slackDaemon = new SlackListenerDaemon(slack, redis);
 
   // Always route the status channel (#general) to queue:general for testing

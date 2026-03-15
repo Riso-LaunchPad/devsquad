@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { resolveProjectName } from '../utils/project';
 import * as crypto from 'crypto';
 import { exec as execCb } from 'child_process';
 import { promisify } from 'util';
@@ -13,6 +14,7 @@ import { processorLabel } from './daemon';
 import { DaemonStatusService } from '../application/daemon/DaemonStatusService';
 import { loadConfig } from '../utils/config';
 import { print } from 'ioredis';
+import { getDevsquadHome } from '../utils/paths';
 
 const exec = promisify(execCb);
 const svc = new ProjectService();
@@ -163,14 +165,20 @@ export function projectCommand(program: Command): void {
   project
     .command('update')
     .description('Update orchestrator phase and/or current task (called by Gemini Orchestrator)')
-    .requiredOption('--name <name>', 'Project name')
+    .option('--name <name>', 'project name (defaults to current directory name if registered)')
     .option('--phase <phase>', 'Orchestrator phase: Listening|Planning|Delegating|Waiting|Reporting')
     .option('--task <text>', 'Current task description (use "—" to clear)')
+    .option('--agent <name>', 'Agent name for combined update (use with --agent-status)')
+    .option('--agent-status <status>', 'Agent status for combined update (use with --agent)')
+    .option('--batch', 'Read JSON from stdin: {"phase":"Delegating","task":"...","agents":{"agent-name":"Working"}}')
+    .option('--approve-next', 'Pre-authorize next auto-when-autonomous gate')
     .action(async (opts) => {
       try {
-        const projectConfig = await svc.get(opts.name);
+        const projects = await svc.loadAll();
+        const name = resolveProjectName(opts.name, process.cwd(), projects);
+        const projectConfig = await svc.get(name);
         if (!projectConfig) {
-          console.error(`Project "${opts.name}" not found`);
+          console.error(`Project "${name}" not found`);
           process.exit(1);
         }
 
@@ -179,9 +187,66 @@ export function projectCommand(program: Command): void {
         const slack = new SlackService(client, null as never);
         const statusSvc = new ProjectStatusService(slack);
 
+        // Handle --approve-next flag
+        if (opts.approveNext) {
+          await statusSvc.setApproveNext(projectConfig, true);
+
+          // Append audit log entry
+          const auditEntry = {
+            timestamp: new Date().toISOString(),
+            gate_class: 'auto-when-autonomous',
+            task: opts.task || '—',
+            phase: opts.phase || projectConfig.mode || '—',
+            source: 'approve-next',
+          };
+
+          try {
+            const { getAuditLogPath } = await import('../utils/paths');
+            await fs.mkdir(path.dirname(getAuditLogPath()), { recursive: true });
+            await fs.appendFile(getAuditLogPath(), JSON.stringify(auditEntry) + '\n', 'utf-8');
+          } catch {
+            // Audit log failure is non-fatal
+          }
+
+          console.log(`✓ Next auto-when-autonomous gate pre-authorized`);
+          return;
+        }
+
+        // Handle batch mode
+        if (opts.batch) {
+          // Read JSON from stdin
+          const chunks: string[] = [];
+          for await (const chunk of process.stdin) {
+            chunks.push(chunk);
+          }
+          const batchInput = JSON.parse(chunks.join(''));
+
+          await statusSvc.updateBatch(projectConfig, {
+            phase: batchInput.phase,
+            task: batchInput.task,
+            agents: batchInput.agents,
+          });
+          console.log(`✓ Batch update completed`);
+          return;
+        }
+
+        // Handle agent + agent-status combined update (atomic)
+        if (opts.agent && opts.agentStatus) {
+          await statusSvc.updateSession(projectConfig, {
+            phase: opts.phase as string | undefined,
+            task: opts.task as string | undefined,
+          }, {
+            name: opts.agent,
+            status: opts.agentStatus,
+          });
+          console.log(`✓ Status updated (atomic)`);
+          return;
+        }
+
+        // Standard update
         await statusSvc.updateSession(projectConfig, {
-          phase: opts.phase,
-          task: opts.task,
+          phase: opts.phase as string | undefined,
+          task: opts.task as string | undefined,
         });
 
         console.log(`✓ Status updated`);
@@ -196,14 +261,17 @@ export function projectCommand(program: Command): void {
   project
     .command('agent')
     .description('Update an agent status in the project status message (called by Gemini Orchestrator)')
-    .requiredOption('--name <name>', 'Project name')
+    .option('--name <name>', 'project name (defaults to current directory name if registered)')
     .requiredOption('--agent <agent>', 'Agent container name (e.g. agent-claude-lead)')
     .requiredOption('--status <status>', 'Status: Dead|Standby|Working|Done|Error  (Done auto-reverts to Standby)')
+    .option('--reason <text>', 'Error reason (shown when status is Error)')
     .action(async (opts) => {
       try {
-        const projectConfig = await svc.get(opts.name);
+        const projects = await svc.loadAll();
+        const name = resolveProjectName(opts.name, process.cwd(), projects);
+        const projectConfig = await svc.get(name);
         if (!projectConfig) {
-          console.error(`Project "${opts.name}" not found`);
+          console.error(`Project "${name}" not found`);
           process.exit(1);
         }
 
@@ -212,9 +280,9 @@ export function projectCommand(program: Command): void {
         const slack = new SlackService(client, null as never);
         const statusSvc = new ProjectStatusService(slack);
 
-        await statusSvc.updateAgent(projectConfig, opts.agent, opts.status);
+        await statusSvc.updateAgent(projectConfig, opts.agent, opts.status, opts.reason);
 
-        console.log(`✓ ${opts.agent} → ${opts.status}`);
+        console.log(`✓ ${opts.agent} → ${opts.status}${opts.reason ? ` (${opts.reason})` : ''}`);
       } catch (err: unknown) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);
@@ -482,6 +550,41 @@ export function projectCommand(program: Command): void {
       console.log(`${'-'.repeat(20)} ${'-'.repeat(14)} ${'-'.repeat(30)}`);
       for (const p of projects) {
         console.log(`${p.name.padEnd(20)} ${p.channelId.padEnd(14)} ${p.tmuxSession}:${p.tmuxWindow}`);
+      }
+    });
+
+  // ── set-mode ─────────────────────────────────────────────────────────────────
+
+  project
+    .command('set-mode')
+    .description('Set project gate mode (autonomous or supervised)')
+    .option('--mode <mode>', 'Mode: autonomous or supervised')
+    .option('--name <name>', 'Project name (default: current directory name)')
+    .action(async (opts) => {
+      try {
+        if (!opts.mode) {
+          console.error('Error: --mode is required');
+          process.exit(1);
+        }
+
+        if (opts.mode !== 'autonomous' && opts.mode !== 'supervised') {
+          console.error(`Error: Invalid mode "${opts.mode}". Must be "autonomous" or "supervised".`);
+          process.exit(1);
+        }
+
+        const projects = await svc.loadAll();
+        const name = resolveProjectName(opts.name, process.cwd(), projects);
+        const projectConfig = await svc.get(name);
+        if (!projectConfig) {
+          console.error(`Project "${name}" not found`);
+          process.exit(1);
+        }
+
+        await svc.update(name, { mode: opts.mode });
+        console.log(`✓ Project "${name}" mode set to ${opts.mode}`);
+      } catch (err: unknown) {
+        console.error('Error:', err instanceof Error ? err.message : err);
+        process.exit(1);
       }
     });
 }

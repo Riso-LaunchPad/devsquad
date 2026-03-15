@@ -1,23 +1,8 @@
 import * as fs from 'fs/promises';
 import type { SlackService } from '../slack/SlackService';
 import type { DockerService, ContainerStatus } from '../../infra/docker/DockerService';
+import type { AgentRegistryService, AgentDef } from '../agent/AgentRegistryService';
 import { getTeamStatePath, getDevsquadHome } from '../../utils/paths';
-
-// ── Agent definitions (from Team Topology) ───────────────────────────────────
-
-export interface AgentDef {
-  name: string;
-  role: string;
-}
-
-export const TEAM_AGENTS: AgentDef[] = [
-  { name: 'agent-claude-lead',      role: 'Tech Lead' },
-  { name: 'agent-gemini-manager',   role: 'Project Manager' },
-  { name: 'agent-gemini-architect', role: 'Solution Architect' },
-  { name: 'agent-minimax-dev',      role: 'Developer' },
-  { name: 'agent-claude-dev',       role: 'Developer' },
-  { name: 'agent-gemini-qa',        role: 'QC Analyst' },
-];
 
 // ── Persisted state ───────────────────────────────────────────────────────────
 
@@ -34,6 +19,7 @@ export class TeamStatusService {
     private readonly slack: SlackService,
     private readonly channel: string,
     private readonly docker: DockerService,
+    private readonly registry: AgentRegistryService,
   ) {}
 
   /**
@@ -42,14 +28,14 @@ export class TeamStatusService {
   async onStart(): Promise<void> {
     await fs.mkdir(getDevsquadHome(), { recursive: true });
 
-    const statuses = await this.fetchStatuses();
+    const { agents, statuses } = await this.fetchStatuses();
     const state = await this.loadState();
 
     if (!state) {
-      const result = await this.slack.send(this.channel, buildTable(statuses));
+      const result = await this.slack.send(this.channel, buildTable(agents, statuses));
       await this.saveState({ channelId: this.channel, messageTs: result.ts, statuses });
     } else {
-      await this.slack.edit(state.channelId, state.messageTs, buildTable(statuses));
+      await this.slack.edit(state.channelId, state.messageTs, buildTable(agents, statuses));
       await this.saveState({ ...state, statuses });
     }
   }
@@ -61,8 +47,8 @@ export class TeamStatusService {
     const state = await this.loadState();
     if (!state) return;
 
-    const statuses = await this.fetchStatuses();
-    await this.slack.edit(state.channelId, state.messageTs, buildTable(statuses));
+    const { agents, statuses } = await this.fetchStatuses();
+    await this.slack.edit(state.channelId, state.messageTs, buildTable(agents, statuses));
     await this.saveState({ ...state, statuses });
   }
 
@@ -74,8 +60,9 @@ export class TeamStatusService {
     const state = await this.loadState();
     if (!state) return;
 
+    const agents = await this.registry.list();
     const updated = { ...state.statuses, [agentName]: status as ContainerStatus };
-    await this.slack.edit(state.channelId, state.messageTs, buildTable(updated));
+    await this.slack.edit(state.channelId, state.messageTs, buildTable(agents, updated));
     await this.saveState({ ...state, statuses: updated });
   }
 
@@ -89,8 +76,10 @@ export class TeamStatusService {
 
   // ── Private ────────────────────────────────────────────────────────────────
 
-  private async fetchStatuses(): Promise<Record<string, ContainerStatus>> {
-    return this.docker.getStatuses(TEAM_AGENTS.map(a => a.name));
+  private async fetchStatuses(): Promise<{ agents: AgentDef[]; statuses: Record<string, ContainerStatus> }> {
+    const agents = await this.registry.list();
+    const statuses = await this.docker.getStatuses(agents.map(a => a.name));
+    return { agents, statuses };
   }
 
   private async loadState(): Promise<TeamState | null> {
@@ -117,7 +106,7 @@ function pad(s: string, len: number): string {
   return s.length >= len ? s : s + ' '.repeat(len - s.length);
 }
 
-function buildTable(statuses: Record<string, ContainerStatus | string>): string {
+function buildTable(agents: AgentDef[], statuses: Record<string, ContainerStatus | string>): string {
   const sep = `${'─'.repeat(COL_NAME)}┼${'─'.repeat(COL_ROLE)}┼${'─'.repeat(COL_STATUS)}`;
 
   const header =
@@ -126,7 +115,7 @@ function buildTable(statuses: Record<string, ContainerStatus | string>): string 
     `${pad('Container', COL_NAME)}│${pad('Role', COL_ROLE)}│Status\n` +
     sep;
 
-  const rows = TEAM_AGENTS.map(({ name, role }) => {
+  const rows = agents.map(({ name, role }) => {
     const raw = statuses[name] ?? 'unknown';
     const label = `${statusEmoji(raw)} ${containerLabel(raw)}`;
     return `${pad(name, COL_NAME)}│${pad(role, COL_ROLE)}│${label}`;

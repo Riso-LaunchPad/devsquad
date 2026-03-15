@@ -8,6 +8,7 @@ export interface ProjectConfig {
   tmuxWindow: string;        // tmux window name (running Claude CLI as Orchestrator)
   statusMessageTs?: string;  // ts of the pinned status message in Slack
   claudeSessionId?: string;  // Claude CLI session ID for resuming conversations
+  mode?: 'autonomous' | 'supervised'; // gate mode for auto-approve system
 }
 
 export class ProjectService {

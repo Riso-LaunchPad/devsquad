@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TeamStatusService, TEAM_AGENTS } from '../../src/application/daemon/TeamStatusService';
+import { TeamStatusService } from '../../src/application/daemon/TeamStatusService';
 import { SlackService } from '../../src/application/slack/SlackService';
 import { MockSlackClient } from '../mocks/MockSlackClient';
 import { MockSlackSocket } from '../mocks/MockSlackSocket';
 import { getTeamStatePath } from '../../src/utils/paths';
 import type { DockerService, ContainerStatus } from '../../src/infra/docker/DockerService';
+import type { AgentRegistryService, AgentDef } from '../../src/application/agent/AgentRegistryService';
 
 // ── fs mock ───────────────────────────────────────────────────────────────────
 
@@ -29,11 +30,22 @@ const mockFs = vi.hoisted(() => {
 
 vi.mock('fs/promises', () => mockFs);
 
+// ── test agents ───────────────────────────────────────────────────────────────
+
+const TEST_AGENTS: AgentDef[] = [
+  { name: 'agent-claude-lead',      role: 'Tech Lead',          model: 'claude-sonnet-4-6' },
+  { name: 'agent-gemini-manager',   role: 'Project Manager',    model: 'gemini-2.5-pro-preview' },
+  { name: 'agent-gemini-architect', role: 'Solution Architect', model: 'gemini-2.5-pro-preview' },
+  { name: 'agent-minimax-dev',      role: 'Developer',          model: 'MiniMax-M2.5' },
+  { name: 'agent-claude-dev',       role: 'Developer',          model: 'claude-sonnet-4-6' },
+  { name: 'agent-gemini-qa',        role: 'QC Analyst',         model: 'gemini-2.5-pro-preview' },
+];
+
 // ── mock docker ───────────────────────────────────────────────────────────────
 
 function makeMockDocker(defaultStatus: ContainerStatus = 'running'): DockerService {
   const statuses: Record<string, ContainerStatus> = {};
-  for (const agent of TEAM_AGENTS) {
+  for (const agent of TEST_AGENTS) {
     statuses[agent.name] = defaultStatus;
   }
   return {
@@ -44,6 +56,18 @@ function makeMockDocker(defaultStatus: ContainerStatus = 'running'): DockerServi
   } as unknown as DockerService;
 }
 
+// ── mock registry ─────────────────────────────────────────────────────────────
+
+function makeMockRegistry(agents: AgentDef[] = TEST_AGENTS): AgentRegistryService {
+  return {
+    list: vi.fn().mockResolvedValue(agents),
+    get: vi.fn(),
+    add: vi.fn(),
+    remove: vi.fn(),
+    init: vi.fn(),
+  } as unknown as AgentRegistryService;
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function makeService(channel = 'C_STATUS', dockerStatus: ContainerStatus = 'running') {
@@ -51,7 +75,8 @@ function makeService(channel = 'C_STATUS', dockerStatus: ContainerStatus = 'runn
   const socket = new MockSlackSocket();
   const slack = new SlackService(client, socket);
   const docker = makeMockDocker(dockerStatus);
-  const svc = new TeamStatusService(slack, channel, docker);
+  const registry = makeMockRegistry();
+  const svc = new TeamStatusService(slack, channel, docker, registry);
   return { svc, client };
 }
 
@@ -73,12 +98,12 @@ describe('TeamStatusService', () => {
       expect(client.posted[0].text).toContain('Team Status');
     });
 
-    it('table contains all 5 agents', async () => {
+    it('table contains all agents', async () => {
       const { svc, client } = makeService();
       await svc.onStart();
 
       const text = client.posted[0].text;
-      for (const agent of TEAM_AGENTS) {
+      for (const agent of TEST_AGENTS) {
         expect(text).toContain(agent.name);
       }
     });
@@ -201,7 +226,7 @@ describe('TeamStatusService', () => {
 
       const statuses = await svc.getStatuses();
       expect(statuses).not.toBeNull();
-      expect(Object.keys(statuses!)).toHaveLength(TEAM_AGENTS.length);
+      expect(Object.keys(statuses!)).toHaveLength(TEST_AGENTS.length);
     });
   });
 });

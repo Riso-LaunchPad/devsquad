@@ -1,4 +1,6 @@
 import { Command } from 'commander';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { SlackService } from '../application/slack/SlackService';
 import { SlackBoltClient } from '../infra/slack/SlackBoltClient';
 import { ProjectService } from '../application/project/ProjectService';
@@ -57,6 +59,102 @@ export function slackCommand(program: Command): void {
         const svc = buildSlack(config.slack_bot_token!);
         const result = await svc.reply(channelId, threadTs, message);
         console.log(`✓ Replied (ts: ${result.ts})`);
+      } catch (err: unknown) {
+        console.error('Error:', err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
+    });
+
+  // ── react ───────────────────────────────────────────────────────────────────
+
+  slack
+    .command('react <ts> <emoji>')
+    .description('Add a reaction to a message')
+    .option('--channel <id>', 'Slack channel ID')
+    .option('--project <name>', 'Project name (uses project channel, default: current directory)')
+    .action(async (ts: string, emoji: string, opts) => {
+      try {
+        const config = await loadConfig();
+        const channelId = await resolveChannel(opts.channel, opts.project);
+        const svc = buildSlack(config.slack_bot_token!);
+        await svc.react(channelId, ts, emoji);
+        console.log(`✓ Reacted :${emoji}:`);
+      } catch (err: unknown) {
+        console.error('Error:', err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
+    });
+
+  // ── unreact ─────────────────────────────────────────────────────────────────
+
+  slack
+    .command('unreact <ts> <emoji>')
+    .description('Remove a reaction from a message')
+    .option('--channel <id>', 'Slack channel ID')
+    .option('--project <name>', 'Project name (uses project channel, default: current directory)')
+    .action(async (ts: string, emoji: string, opts) => {
+      try {
+        const config = await loadConfig();
+        const channelId = await resolveChannel(opts.channel, opts.project);
+        const svc = buildSlack(config.slack_bot_token!);
+        await svc.unreact(channelId, ts, emoji);
+        console.log(`✓ Unreacted :${emoji}:`);
+      } catch (err: unknown) {
+        console.error('Error:', err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
+    });
+
+  // ── upload ──────────────────────────────────────────────────────────────────
+
+  slack
+    .command('upload <filepath>')
+    .description('Upload a file to a channel')
+    .requiredOption('--thread <ts>', 'Thread timestamp to upload to')
+    .option('--channel <id>', 'Slack channel ID')
+    .option('--project <name>', 'Project name (uses project channel, default: current directory)')
+    .option('--title <title>', 'File title')
+    .option('--comment <text>', 'Comment to post after upload')
+    .action(async (filepath: string, opts) => {
+      try {
+        const config = await loadConfig();
+        const channelId = await resolveChannel(opts.channel, opts.project);
+
+        // Validate file exists
+        try {
+          await fs.access(filepath);
+        } catch {
+          console.error(`Error: File not found: ${filepath}`);
+          process.exit(1);
+        }
+
+        // Check file size and warn if > 5MB
+        const stats = await fs.stat(filepath);
+        const SIZE_WARNING_THRESHOLD = 5 * 1024 * 1024; // 5MB
+        if (stats.size > SIZE_WARNING_THRESHOLD) {
+          console.warn(`⚠️ Warning: File is ${(stats.size / 1024 / 1024).toFixed(2)}MB (>5MB limit)`);
+        }
+
+        // Read file contents
+        const content = await fs.readFile(filepath);
+        const filename = path.basename(filepath);
+
+        const svc = buildSlack(config.slack_bot_token!);
+        const result = await svc.uploadFile({
+          channelId,
+          filename,
+          content,
+          title: opts.title,
+          threadTs: opts.thread,
+        });
+
+        console.log(`✓ Uploaded (fileId: ${result.fileId})`);
+
+        // Post comment if provided
+        if (opts.comment) {
+          await svc.reply(channelId, opts.thread, opts.comment);
+          console.log(`✓ Comment posted`);
+        }
       } catch (err: unknown) {
         console.error('Error:', err instanceof Error ? err.message : err);
         process.exit(1);

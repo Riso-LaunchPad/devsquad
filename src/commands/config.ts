@@ -7,14 +7,37 @@ function maskToken(token: string | undefined): string {
   return `${token.substring(0, 6)}...${token.substring(token.length - 4)}`;
 }
 
+const ALLOWED_SET_KEYS = ['protocol_base'] as const;
+type AllowedSetKey = typeof ALLOWED_SET_KEYS[number];
+
 interface ConfigOptions {
   botToken?: string;
   appToken?: string;
   view?: boolean;
+  set?: string;
 }
 
 export async function configCommand(options: ConfigOptions = {}): Promise<void> {
-  const { botToken, appToken, view } = options;
+  const { botToken, appToken, view, set } = options;
+
+  if (set) {
+    const eqIndex = set.indexOf('=');
+    if (eqIndex === -1) {
+      console.error('Error: --set requires key=value format');
+      process.exit(1);
+    }
+    const key = set.substring(0, eqIndex);
+    const value = set.substring(eqIndex + 1);
+    if (!(ALLOWED_SET_KEYS as readonly string[]).includes(key)) {
+      console.error(`Error: Unknown config key "${key}". Allowed keys: ${ALLOWED_SET_KEYS.join(', ')}`);
+      process.exit(1);
+    }
+    const config = await loadConfig();
+    (config as unknown as Record<string, unknown>)[key as AllowedSetKey] = value;
+    await saveConfig(config);
+    console.log(`✅ Config updated: ${key} = ${value}`);
+    return;
+  }
 
   if (view) {
     const config = await loadConfig();
@@ -23,6 +46,7 @@ export async function configCommand(options: ConfigOptions = {}): Promise<void> 
     console.log(`   Log Level:   ${config.logLevel}`);
     console.log(`   Bot Token:   ${maskToken(config.slack_bot_token)}`);
     console.log(`   App Token:   ${maskToken(config.slack_app_token)}`);
+    console.log(`   Protocol Base: ${config.protocol_base || '(not set)'}`);
     console.log('');
     return;
   }

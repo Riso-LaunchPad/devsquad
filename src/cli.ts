@@ -6,6 +6,8 @@ import { projectCommand } from './commands/project';
 import { runListenerCommand } from './commands/run-listener';
 import { runProcessorCommand } from './commands/run-processor';
 import { slackCommand } from './commands/slack';
+import { taskCommand } from './commands/task';
+import { agentCommand } from './commands/agent';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { version } = require('../package.json');
@@ -26,11 +28,14 @@ async function main(): Promise<void> {
     .option('--bot-token <token>', 'Set Slack Bot Token (xoxb-...)')
     .option('--app-token <token>', 'Set Slack App Token (xoxa-...)')
     .option('--view', 'View current configuration')
+    .option('--set <key=value>', 'Set a config key (e.g. --set protocol_base=/path)')
     .action(configCommand);
 
   daemonCommand(program);
   projectCommand(program);
+  agentCommand(program);
   slackCommand(program);
+  taskCommand(program);
 
   program
     .command('_run-listener')

@@ -116,4 +116,36 @@ describe('ProjectService', () => {
       expect(await svc.get('nonexistent')).toBeNull();
     });
   });
+
+  describe('update', () => {
+    it('persists mode field', async () => {
+      const svc = new ProjectService();
+      await svc.add(projectA);
+
+      await svc.update('project-a', { mode: 'autonomous' });
+
+      const projects = await svc.loadAll();
+      expect(projects[0].mode).toBe('autonomous');
+    });
+
+    it('updates mode from supervised to autonomous', async () => {
+      const svc = new ProjectService();
+      await svc.add({ ...projectA, mode: 'supervised' });
+
+      await svc.update('project-a', { mode: 'autonomous' });
+
+      const projects = await svc.loadAll();
+      expect(projects[0].mode).toBe('autonomous');
+    });
+
+    it('can clear mode by setting undefined', async () => {
+      const svc = new ProjectService();
+      await svc.add({ ...projectA, mode: 'autonomous' });
+
+      await svc.update('project-a', { mode: undefined });
+
+      const projects = await svc.loadAll();
+      expect(projects[0].mode).toBeUndefined();
+    });
+  });
 });

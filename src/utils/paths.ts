@@ -41,6 +41,18 @@ export function getProjectsPath(): string {
   return path.join(getDevsquadHome(), 'projects.json');
 }
 
+export function getAgentsPath(): string {
+  return path.join(getDevsquadHome(), 'agents.json');
+}
+
 export function getProjectStatusPath(name: string): string {
   return path.join(getDevsquadHome(), `project-${name}.state.json`);
+}
+
+export function getSessionDir(): string {
+  return path.join(process.cwd(), 'session');
+}
+
+export function getAuditLogPath(): string {
+  return path.join(getSessionDir(), 'audit.log');
 }
