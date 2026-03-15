@@ -15,6 +15,7 @@ export const TEAM_AGENTS: AgentDef[] = [
   { name: 'agent-gemini-manager',   role: 'Project Manager' },
   { name: 'agent-gemini-architect', role: 'Solution Architect' },
   { name: 'agent-minimax-dev',      role: 'Developer' },
+  { name: 'agent-claude-dev',       role: 'Developer' },
   { name: 'agent-gemini-qa',        role: 'QC Analyst' },
 ];
 
