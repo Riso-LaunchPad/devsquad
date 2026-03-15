@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>devsquad Documentation - API / Interfaces</title>
+  <style>
+    :root { --bg-light: #f9fafb; --bg-white: #ffffff; --text-main: #374151; --text-muted: #6b7280; --primary: #2563eb; --sidebar-bg: #111827; --sidebar-text: #e5e7eb; --sidebar-hover: #374151; --code-bg: #1f2937; --code-text: #e5e7eb; --border: #e5e7eb; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-light); color: var(--text-main); display: flex; min-height: 100vh; }
+    .sidebar { width: 250px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { padding: 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid var(--sidebar-hover); color: white; }
+    .nav-links { display: flex; flex-direction: column; padding: 10px 0; }
+    .nav-links a { color: var(--sidebar-text); text-decoration: none; padding: 12px 20px; transition: 0.2s; }
+    .nav-links a:hover, .nav-links a.active { background: var(--sidebar-hover); color: white; }
+    .main-content { margin-left: 250px; padding: 40px; flex: 1; max-width: 1000px; }
+    .card { background: var(--bg-white); border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; border: 1px solid var(--border); }
+    h1, h2, h3 { color: #111827; margin-top: 0; }
+    p { line-height: 1.6; }
+    pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 6px; overflow-x: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.9rem; line-height: 1.5; margin-bottom: 20px;}
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f3f4f6; padding: 2px 4px; border-radius: 4px; color: #b91c1c; }
+    pre code { background: transparent; padding: 0; color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">devsquad</div>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="data-flow.html">Data Flow</a>
+      <a href="cli.html">CLI Commands</a>
+      <a href="api.html" class="active">API / Interfaces</a>
+      <a href="config.html">Configuration</a>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="card">
+      <h1>Domain Interfaces</h1>
+      <p>The application relies exclusively on these strict contracts to perform I/O operations.</p>
+
+      <h2>ISlackClient</h2>
+      <p>Core Slack REST API abstraction for sending messages and managing channels.</p>
+<pre><code>interface ISlackClient {
+  postMessage(options: PostMessageOptions): Promise&lt;PostResult&gt;;
+  updateMessage(options: UpdateMessageOptions): Promise&lt;PostResult&gt;;
+  deleteMessage(channel: string, ts: string): Promise&lt;void&gt;;
+  createChannel(name: string): Promise&lt;ChannelInfo&gt;;
+  archiveChannel(channel: string): Promise&lt;void&gt;;
+  inviteToChannel(channel: string, users: string[]): Promise&lt;void&gt;;
+  // ... including history, files, reactions, and health checks
+}</code></pre>
+
+      <h2>ISlackSocket</h2>
+      <p>Abstraction for receiving real-time events over Slack Socket Mode.</p>
+<pre><code>interface ISlackSocket {
+  connect(onMessage: MessageHandler): Promise&lt;void&gt;;
+  disconnect(): Promise&lt;void&gt;;
+  isConnected(): boolean;
+}
+
+type MessageHandler = (message: IncomingSlackMessage) =&gt; Promise&lt;void&gt;;
+
+interface IncomingSlackMessage {
+  channel: string;
+  user: string;
+  text: string;
+  ts: string;
+  thread_ts?: string;
+}</code></pre>
+
+      <h2>ITmuxService</h2>
+      <p>Manages interactions with local <code>tmux</code> terminal multiplexer sessions.</p>
+<pre><code>interface ITmuxService {
+  hasSession(session: string): Promise&lt;boolean&gt;;
+  ensureSession(session: string): Promise&lt;void&gt;;
+  createWindow(session: string, window: string): Promise&lt;void&gt;;
+  sendMessage(target: string, message: string): Promise&lt;void&gt;;
+  killSession(session: string): Promise&lt;void&gt;;
+  listSessions(): Promise&lt;string[]&gt;;
+}</code></pre>
+
+      <h2>IRedisService</h2>
+      <p>Queue interaction abstraction.</p>
+<pre><code>interface IRedisService {
+  push(key: string, value: string): Promise&lt;void&gt;;
+  bpop(key: string, timeout: number): Promise&lt;string | null&gt;;
+  pop(key: string): Promise&lt;string | null&gt;;
+  len(key: string): Promise&lt;number&gt;;
+  del(key: string): Promise&lt;void&gt;;
+  ping(): Promise&lt;void&gt;;
+  quit(): Promise&lt;void&gt;;
+}</code></pre>
+    </div>
+
+    <div class="card">
+      <h1>Key Application Classes</h1>
+
+      <h2>SlackService</h2>
+      <p>Facade for all Slack operations, wrapping both <code>ISlackClient</code> and <code>ISlackSocket</code> so the rest of the application has a unified interface.</p>
+
+      <h2>ProjectService</h2>
+      <p>Acts as a Repository. Abstracts the persistent project state JSON file, exposing CRUD methods to register, modify, and track active project spaces and configurations.</p>
+
+      <h2>SlackListenerDaemon</h2>
+      <p>Constantly listens to the socket. Looks up target projects based on the <code>channelId</code> of the incoming message, and dispatches the payload to the respective Redis queue.</p>
+
+      <h2>MessageProcessorDaemon</h2>
+      <p>Operates inside project-specific background jobs. Uses blocking pop (<code>bpop</code>) to read queued tasks from Redis, formats the data cleanly, and invokes <code>TmuxService.sendMessage()</code>.</p>
+    </div>
+  </div>
+</body>
+</html>

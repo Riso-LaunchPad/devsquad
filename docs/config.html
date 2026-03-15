@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>devsquad Documentation - Configuration</title>
+  <style>
+    :root { --bg-light: #f9fafb; --bg-white: #ffffff; --text-main: #374151; --text-muted: #6b7280; --primary: #2563eb; --sidebar-bg: #111827; --sidebar-text: #e5e7eb; --sidebar-hover: #374151; --code-bg: #1f2937; --code-text: #e5e7eb; --border: #e5e7eb; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-light); color: var(--text-main); display: flex; min-height: 100vh; }
+    .sidebar { width: 250px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { padding: 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid var(--sidebar-hover); color: white; }
+    .nav-links { display: flex; flex-direction: column; padding: 10px 0; }
+    .nav-links a { color: var(--sidebar-text); text-decoration: none; padding: 12px 20px; transition: 0.2s; }
+    .nav-links a:hover, .nav-links a.active { background: var(--sidebar-hover); color: white; }
+    .main-content { margin-left: 250px; padding: 40px; flex: 1; max-width: 1000px; }
+    .card { background: var(--bg-white); border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; border: 1px solid var(--border); overflow-x: auto; }
+    h1, h2 { color: #111827; margin-top: 0; }
+    p { line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 30px;}
+    th, td { border: 1px solid var(--border); padding: 12px; text-align: left; }
+    th { background: #f9fafb; font-weight: 600; white-space: nowrap; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f3f4f6; padding: 2px 4px; border-radius: 4px; color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">devsquad</div>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="data-flow.html">Data Flow</a>
+      <a href="cli.html">CLI Commands</a>
+      <a href="api.html">API / Interfaces</a>
+      <a href="config.html" class="active">Configuration</a>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="card">
+      <h1>Configuration & State</h1>
+
+      <h2>Environment Variables</h2>
+      <table>
+        <tr>
+          <th>Variable</th>
+          <th>Used In</th>
+          <th>Purpose</th>
+        </tr>
+        <tr>
+          <td><code>DEV_SQUAD_CORE_MEMBERS</code></td>
+          <td><code>project.ts</code></td>
+          <td>Comma-separated Slack user IDs to automatically invite to new project channels.</td>
+        </tr>
+      </table>
+
+      <h2>Config File: <code>~/.devsquad/config.json</code></h2>
+      <p>Created interactively via <code>devsquad config</code>.</p>
+      <table>
+        <tr>
+          <th>Field</th>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><code>slack_app_token</code></td>
+          <td>string</td>
+          <td>Slack Socket Mode App token (starts with <code>xapp-</code>). Required.</td>
+        </tr>
+        <tr>
+          <td><code>slack_bot_token</code></td>
+          <td>string</td>
+          <td>Slack Bot token (starts with <code>xoxb-</code>). Required.</td>
+        </tr>
+        <tr>
+          <td><code>redis_host</code></td>
+          <td>string</td>
+          <td>Redis host address (default: <code>127.0.0.1</code>).</td>
+        </tr>
+        <tr>
+          <td><code>redis_port</code></td>
+          <td>number</td>
+          <td>Redis port (default: <code>6379</code>).</td>
+        </tr>
+        <tr>
+          <td><code>redis_password</code></td>
+          <td>string</td>
+          <td>Redis password (optional).</td>
+        </tr>
+        <tr>
+          <td><code>slack_status_channel</code></td>
+          <td>string</td>
+          <td>Channel ID where global agent statuses are broadcasted.</td>
+        </tr>
+        <tr>
+          <td><code>port</code></td>
+          <td>number</td>
+          <td>Internal HTTP port.</td>
+        </tr>
+        <tr>
+          <td><code>logLevel</code></td>
+          <td>string</td>
+          <td>Winston log level (e.g., info, debug).</td>
+        </tr>
+      </table>
+
+      <h2>State Files in <code>~/.devsquad/</code></h2>
+      <table>
+        <tr>
+          <th>File</th>
+          <th>Owner</th>
+          <th>Content / Purpose</th>
+        </tr>
+        <tr>
+          <td><code>projects.json</code></td>
+          <td><code>ProjectService</code></td>
+          <td>Array of configuration objects representing active tracked projects.</td>
+        </tr>
+        <tr>
+          <td><code>daemon-state.json</code></td>
+          <td><code>DaemonStatusService</code></td>
+          <td>Metadata capturing the last shutdown info, leveraged for crash detection.</td>
+        </tr>
+        <tr>
+          <td><code>daemon.shutdown</code></td>
+          <td><code>run-listener.ts</code></td>
+          <td>A temporary flag file written solely on clean, graceful exits.</td>
+        </tr>
+        <tr>
+          <td><code>team-state.json</code></td>
+          <td><code>TeamStatusService</code></td>
+          <td>Cached Docker container statuses for the AI team.</td>
+        </tr>
+        <tr>
+          <td><code>project-{name}.state.json</code></td>
+          <td><code>ProjectStatusService</code></td>
+          <td>Per-project status containing the Slack message TS block to edit on phase updates.</td>
+        </tr>
+        <tr>
+          <td><code>logs/{label}.log</code></td>
+          <td><code>LaunchDaemonManager</code></td>
+          <td>Continuous stdout/stderr streams for each respective daemon process.</td>
+        </tr>
+      </table>
+
+      <h2>macOS LaunchAgent Configuration</h2>
+      <p><code>LaunchDaemonManager</code> automatically generates <code>.plist</code> files in <code>~/Library/LaunchAgents/</code>.</p>
+      <ul>
+        <li><code>com.devsquad.listener</code>: Runs the WebSocket receiver.</li>
+        <li><code>com.devsquad.processor.{projectName}</code>: Dedicated tmux injector instances.</li>
+      </ul>
+      <p>All plists strictly set <code>KeepAlive: false</code>, giving the <code>devsquad</code> CLI absolute authority to restart, load, and manage running Daemons rather than the OS unexpectedly reviving broken processes.</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>devsquad Documentation - Architecture</title>
+  <style>
+    :root { --bg-light: #f9fafb; --bg-white: #ffffff; --text-main: #374151; --text-muted: #6b7280; --primary: #2563eb; --sidebar-bg: #111827; --sidebar-text: #e5e7eb; --sidebar-hover: #374151; --code-bg: #1f2937; --code-text: #e5e7eb; --border: #e5e7eb; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-light); color: var(--text-main); display: flex; min-height: 100vh; }
+    .sidebar { width: 250px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { padding: 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid var(--sidebar-hover); color: white; }
+    .nav-links { display: flex; flex-direction: column; padding: 10px 0; }
+    .nav-links a { color: var(--sidebar-text); text-decoration: none; padding: 12px 20px; transition: 0.2s; }
+    .nav-links a:hover, .nav-links a.active { background: var(--sidebar-hover); color: white; }
+    .main-content { margin-left: 250px; padding: 40px; flex: 1; max-width: 1000px; }
+    .card { background: var(--bg-white); border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; border: 1px solid var(--border); }
+    h1, h2, h3 { color: #111827; margin-top: 0; }
+    h1 { font-size: 2.2rem; margin-bottom: 16px; }
+    h2 { font-size: 1.5rem; margin-top: 32px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    p { line-height: 1.6; }
+    pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 6px; overflow-x: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.9rem; line-height: 1.5; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f3f4f6; padding: 2px 4px; border-radius: 4px; color: #b91c1c; }
+    pre code { background: transparent; padding: 0; color: inherit; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid var(--border); padding: 12px; text-align: left; }
+    th { background: #f9fafb; font-weight: 600; }
+    .arch-diagram { display: flex; flex-direction: column; gap: 10px; margin: 30px 0; }
+    .arch-layer { background: #e0e7ff; border-left: 4px solid var(--primary); padding: 15px; border-radius: 4px; }
+    .arch-layer strong { color: var(--primary); font-size: 1.1rem; display: block; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">devsquad</div>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="data-flow.html">Data Flow</a>
+      <a href="cli.html">CLI Commands</a>
+      <a href="api.html">API / Interfaces</a>
+      <a href="config.html">Configuration</a>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="card">
+      <h1>Architecture</h1>
+      <p>The codebase follows a <strong>Layered Architecture</strong> with <strong>DDD-lite</strong> (Domain-Driven Design) principles. It is structured into three main horizontal layers, strictly utilizing domain interfaces for inversion of control.</p>
+
+      <h2>Layered Diagram</h2>
+      <div class="arch-diagram">
+        <div class="arch-layer">
+          <strong>CLI / Commands Layer (src/commands/)</strong>
+          User-facing entry points parsing arguments and calling the Application layer.
+        </div>
+        <div class="arch-layer">
+          <strong>Application Layer (src/application/)</strong>
+          Use cases and orchestrators (e.g., Daemons, Project management).
+        </div>
+        <div class="arch-layer">
+          <strong>Domain Layer (src/domain/)</strong>
+          Strict interfaces and contracts (zero dependencies).
+        </div>
+        <div class="arch-layer" style="background: #f3f4f6; border-left-color: #6b7280;">
+          <strong>Infrastructure Layer (src/infra/)</strong>
+          External service implementations satisfying the Domain layer (Slack, Redis, Tmux, Docker).
+        </div>
+        <div class="arch-layer" style="background: #fdf2f8; border-left-color: #db2777;">
+          <strong>Utils Layer (src/utils/)</strong>
+          Configuration files, path helpers, and logging utilities.
+        </div>
+      </div>
+
+      <h2>Design Patterns</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th>Where Used</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Layered / DDD-lite</strong></td>
+            <td>Global</td>
+            <td>Dependencies flow inward towards the Domain. Infrastructure and Application interact through Domain contracts.</td>
+          </tr>
+          <tr>
+            <td><strong>Facade</strong></td>
+            <td><code>SlackService</code></td>
+            <td>Provides a single entry point for all Slack operations, wrapping both <code>ISlackClient</code> and <code>ISlackSocket</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>Adapter</strong></td>
+            <td><code>SlackBoltSocket</code>, <code>SlackSocketModeAdapter</code></td>
+            <td>Adapts external libraries like <code>@slack/bolt</code> and <code>@slack/socket-mode</code> into the internal <code>ISlackSocket</code> domain interface.</td>
+          </tr>
+          <tr>
+            <td><strong>Queue-based Messaging</strong></td>
+            <td><code>SlackListenerDaemon</code> &rarr; Redis &rarr; <code>MessageProcessorDaemon</code></td>
+            <td>Decouples the receipt of messages from Slack and their injection into tmux sessions via Redis queues.</td>
+          </tr>
+          <tr>
+            <td><strong>Watchdog</strong></td>
+            <td><code>SlackSocketModeAdapter</code></td>
+            <td>Actively monitors WebSocket heartbeat. Restarts connection if no real message arrives after 5 minutes.</td>
+          </tr>
+          <tr>
+            <td><strong>State Machine</strong></td>
+            <td><code>ProjectStatusService</code></td>
+            <td>Manages project lifecycle phases: Listening, Planning, Delegating, Waiting, Reporting, Offline, Crashed.</td>
+          </tr>
+          <tr>
+            <td><strong>Repository</strong></td>
+            <td><code>ProjectService</code></td>
+            <td>Abstracts the project JSON file storage behind a strict CRUD interface.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Background Process Management</h2>
+      <p>Background tasks utilize <strong>macOS LaunchAgents</strong> (<code>launchd</code>):</p>
+      <ul>
+        <li><strong>Listener Daemon:</strong> <code>com.devsquad.listener</code> — Runs once globally on the machine.</li>
+        <li><strong>Processor Daemon:</strong> <code>com.devsquad.processor.{projectName}</code> — Runs one per registered project.</li>
+      </ul>
+      <p>Each plist config is written into <code>~/Library/LaunchAgents/</code>. Daemons run without <code>KeepAlive</code> automatically enabled, ensuring devsquad has manual control over startup and shutdown sequences. Standard outputs and errors are written to <code>~/.devsquad/logs/</code>.</p>
+    </div>
+  </div>
+</body>
+</html>

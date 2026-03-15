@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>devsquad Documentation - Data Flow</title>
+  <style>
+    :root { --bg-light: #f9fafb; --bg-white: #ffffff; --text-main: #374151; --text-muted: #6b7280; --primary: #2563eb; --sidebar-bg: #111827; --sidebar-text: #e5e7eb; --sidebar-hover: #374151; --code-bg: #1f2937; --code-text: #e5e7eb; --border: #e5e7eb; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-light); color: var(--text-main); display: flex; min-height: 100vh; }
+    .sidebar { width: 250px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+    .sidebar-header { padding: 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid var(--sidebar-hover); color: white; }
+    .nav-links { display: flex; flex-direction: column; padding: 10px 0; }
+    .nav-links a { color: var(--sidebar-text); text-decoration: none; padding: 12px 20px; transition: 0.2s; }
+    .nav-links a:hover, .nav-links a.active { background: var(--sidebar-hover); color: white; }
+    .main-content { margin-left: 250px; padding: 40px; flex: 1; max-width: 1000px; }
+    .card { background: var(--bg-white); border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; border: 1px solid var(--border); }
+    h1, h2 { color: #111827; margin-top: 0; }
+    p { line-height: 1.6; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f3f4f6; padding: 2px 4px; border-radius: 4px; color: #b91c1c; }
+    .flow-step { display: flex; align-items: flex-start; margin-bottom: 20px; }
+    .flow-number { background: var(--primary); color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; justify-content: center; align-items: center; font-weight: bold; flex-shrink: 0; margin-right: 15px; margin-top: 2px; }
+    .flow-content { background: #f9fafb; border: 1px solid var(--border); padding: 15px; border-radius: 6px; width: 100%; }
+    .flow-content strong { display: block; font-size: 1.1rem; color: #111827; margin-bottom: 5px; }
+    .arrow { text-align: center; font-size: 1.5rem; color: var(--text-muted); margin: -10px 0 10px 20px; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">devsquad</div>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="data-flow.html" class="active">Data Flow</a>
+      <a href="cli.html">CLI Commands</a>
+      <a href="api.html">API / Interfaces</a>
+      <a href="config.html">Configuration</a>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="card">
+      <h1>End-to-End Data Flow</h1>
+      <p>Messages traverse multiple layers to ensure resilient and decoupled integration between Slack and the Claude orchestrator running in local tmux sessions.</p>
+
+      <div class="flow-step">
+        <div class="flow-number">1</div>
+        <div class="flow-content">
+          <strong>Slack Workspace</strong>
+          User posts a message to a project channel. Payload is transmitted over a Socket Mode WebSocket.
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">2</div>
+        <div class="flow-content">
+          <strong>SlackSocketModeAdapter</strong>
+          Receives the WebSocket event. Filters out bot messages to avoid loops and monitors connection heartbeat.
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">3</div>
+        <div class="flow-content">
+          <strong>SlackListenerDaemon</strong>
+          Matches the incoming <code>channelId</code> to a <code>projectName</code> binding map. Dispatches the JSON stringified message to a project-specific Redis queue (<code>queue:{project}</code>).
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">4</div>
+        <div class="flow-content">
+          <strong>Redis Queue</strong>
+          Persists the message until it can be processed. Utilizes BRPOP blocking pop with a 5-second timeout.
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">5</div>
+        <div class="flow-content">
+          <strong>MessageProcessorDaemon</strong>
+          Pulls the message from the Redis queue. Parses the JSON and formats the text: <code>[Channel: #X | User: @Y | TS: Z | Thread: W] {text}</code>.
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">6</div>
+        <div class="flow-content">
+          <strong>TmuxService.sendMessage()</strong>
+          Executes terminal commands to safely inject the formatted message using <code>tmux send-keys -l "{text}" {target}</code>, sleeps 1 second, then hits <code>Enter</code>.
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">7</div>
+        <div class="flow-content">
+          <strong>Claude CLI</strong>
+          The agent inside the local tmux session processes the command. If replying, it invokes the <code>devsquad slack reply</code> CLI tool natively.
+        </div>
+      </div>
+      <div class="arrow">&darr;</div>
+      <div class="flow-step">
+        <div class="flow-number">8</div>
+        <div class="flow-content">
+          <strong>Slack Workspace (Response)</strong>
+          The final response lands back in the Slack thread asynchronously.
+        </div>
+      </div>
+
+      <h2>Status Update Side-Channel</h2>
+      <p>Independent of message traffic, daemons provide real-time updates:</p>
+      <ul>
+        <li><strong>TeamStatusService:</strong> Polls local Docker containers (e.g., <code>claude-lead</code>, <code>gemini-manager</code>) and pushes an ASCII table summary to the general status channel via Slack message editing.</li>
+        <li><strong>ProjectStatusService:</strong> Tracks project phases (Planning, Delegating, etc.) and specific agent activity, updating the dedicated status message inside the project's Slack channel.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
