@@ -482,6 +482,16 @@ export function projectCommand(program: Command): void {
         // Remove from registry
         await svc.remove(opts.name);
 
+        // Delete processor log file
+        process.stdout.write('  Deleting processor log... ');
+        try {
+          const { getLogPath } = await import('../utils/paths');
+          await fs.unlink(getLogPath(processorLabel(opts.name)));
+          console.log('✓');
+        } catch {
+          console.log('(not found)');
+        }
+
         // Update daemon status message with remaining projects
         process.stdout.write('  Updating daemon status... ');
         try {
