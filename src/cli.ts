@@ -8,6 +8,7 @@ import { runProcessorCommand } from './commands/run-processor';
 import { slackCommand } from './commands/slack';
 import { taskCommand } from './commands/task';
 import { agentCommand } from './commands/agent';
+import { doctorCommand } from './commands/doctor';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { version } = require('../package.json');
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
   agentCommand(program);
   slackCommand(program);
   taskCommand(program);
+  doctorCommand(program);
 
   program
     .command('_run-listener')

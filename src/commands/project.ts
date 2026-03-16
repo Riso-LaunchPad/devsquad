@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { resolveProjectName } from '../utils/project';
+import { resolveProjectName, ensureGitignore, startTmuxSession, generateSessionId } from '../utils/project';
 import * as crypto from 'crypto';
 import { exec as execCb } from 'child_process';
 import { promisify } from 'util';
@@ -10,34 +10,13 @@ import { SlackBoltClient } from '../infra/slack/SlackBoltClient';
 import { ProjectService } from '../application/project/ProjectService';
 import { ProjectStatusService } from '../application/project/ProjectStatusService';
 import { LaunchDaemonManager } from '../infra/launchdaemon';
-import { processorLabel } from './daemon';
+import { processorLabel } from '../utils/daemon';
 import { DaemonStatusService } from '../application/daemon/DaemonStatusService';
 import { loadConfig } from '../utils/config';
-import { print } from 'ioredis';
-import { getDevsquadHome } from '../utils/paths';
 
 const exec = promisify(execCb);
 const svc = new ProjectService();
 const mgr = new LaunchDaemonManager();
-
-const GITIGNORE_ENTRIES = [
-  '# devsquad — orchestrator runtime files',
-  'session/'
-];
-
-async function ensureGitignore(dir: string): Promise<void> {
-  const filePath = path.join(dir, '.gitignore');
-  let existing = '';
-  try {
-    existing = await fs.readFile(filePath, 'utf-8');
-  } catch {
-    // file doesn't exist yet
-  }
-  const missing = GITIGNORE_ENTRIES.filter(e => !existing.includes(e));
-  if (missing.length === 0) return;
-  const separator = existing && !existing.endsWith('\n') ? '\n' : '';
-  await fs.writeFile(filePath, existing + separator + missing.join('\n') + '\n', 'utf-8');
-}
 
 export function projectCommand(program: Command): void {
   const project = program
@@ -601,38 +580,3 @@ export function projectCommand(program: Command): void {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-interface ClaudeSessionOpts {
-  sessionId: string;
-  resume?: boolean;
-}
-
-function buildClaudeCommand(opts: ClaudeSessionOpts): string {
-  const flags = ['--dangerously-skip-permissions'];
-  if (opts.resume) {
-    flags.push('--resume', opts.sessionId);
-  } else {
-    flags.push('--session-id', opts.sessionId);
-    flags.push("'start session'");
-  }
-  return `claude ${flags.join(' ')}`;
-}
-
-async function startTmuxSession(session: string, window: string, opts: ClaudeSessionOpts): Promise<void> {
-  const cmd = buildClaudeCommand(opts);
-  try {
-    await exec(`tmux has-session -t "${session}" 2>/dev/null`);
-    // Session exists — ensure window exists
-    try {
-      const execCmd = `tmux new-window -t "${session}" -n "${window}" "${cmd}" 2>/dev/null`;
-      console.log(`    → exec: ${execCmd}`);
-      await exec(execCmd);
-    } catch {
-      // window may already exist
-    }
-  } catch {
-    // Session does not exist — create it
-    const execCmd = `tmux new-session -d -s "${session}" -n "${window}" "${cmd}"`;
-    console.log(`    → exec: ${execCmd}`);
-    await exec(execCmd);
-  }
-}
